@@ -1,8 +1,12 @@
-// ===== All Jobs — read-only rollup of every person's sheet =====
-// Grouped under a subtitle per person, each section in that person's own
-// custom order. Not editable, no independent ordering.
+// ===== All Builds — read-only rollup of every person's sheet =====
+// Default: grouped under a subtitle per person, each section in that
+// person's own custom order. Also sortable by status, job #, date, or name
+// as a single flat list (with a small owner tag per card so you don't lose
+// track of whose job it is once it's out of its person-grouped section).
 
 const PERSON_LABELS = { jake: 'Jake', mike: 'Mike', frank: 'Frank', sab: 'Sab', lou: 'Lou' };
+
+let allJobsState = { data: null, sortMode: 'person' };
 
 async function renderAllJobsTab() {
   const content = document.getElementById('content');
@@ -15,25 +19,74 @@ async function renderAllJobsTab() {
     content.innerHTML = `<div class="stub-card">Couldn't load: ${escapeHtml(e.message)}</div>`;
     return;
   }
+  allJobsState.data = data;
+  paintAllJobs();
+}
 
-  const sections = Object.keys(data)
-    .filter((sheet) => data[sheet].length || true) // still show empty sheets with a header
-    .map((sheet) => {
-      const jobs = data[sheet].filter((j) => j.stage !== 'complete');
+function paintAllJobs() {
+  const content = document.getElementById('content');
+  const { data, sortMode } = allJobsState;
+
+  let sectionsHTML;
+  if (sortMode === 'person') {
+    sectionsHTML = Object.keys(data)
+      .map((sheet) => {
+        const jobs = data[sheet].filter((j) => j.stage !== 'complete');
+        return `
+          <div class="person-section">
+            <h3 class="person-heading">${PERSON_LABELS[sheet] || sheet}</h3>
+            <div class="job-list">
+              ${jobs.map((j) => jobCardHTML(j, { editable: false, sheet })).join('') || '<p class="muted-sm">No active jobs.</p>'}
+            </div>
+          </div>`;
+      })
+      .join('');
+  } else if (sortMode === 'status') {
+    // Grouped by pipeline stage instead of by person, in pipeline order —
+    // this is what lets someone like Ulrich see "everyone's jobs that are
+    // Awaiting Dummy Assembly" in one place.
+    const flat = [];
+    for (const sheet of Object.keys(data)) {
+      for (const j of data[sheet]) if (j.stage !== 'complete') flat.push({ ...j, sheet });
+    }
+    sectionsHTML = STAGES.filter((s) => s.id !== 'complete').map((stage) => {
+      const jobs = flat.filter((j) => j.stage === stage.id);
+      if (!jobs.length) return '';
       return `
         <div class="person-section">
-          <h3 class="person-heading">${PERSON_LABELS[sheet] || sheet}</h3>
+          <h3 class="person-heading">${stage.label}</h3>
           <div class="job-list">
-            ${jobs.map((j) => jobCardHTML(j, { editable: false, sheet })).join('') || '<p class="muted-sm">No active jobs.</p>'}
+            ${jobs.map((j) => ownerTaggedCardHTML(j, j.sheet)).join('')}
           </div>
         </div>`;
-    })
-    .join('');
+    }).join('') || '<p class="muted-sm">No active jobs.</p>';
+  } else {
+    // Flat list sorted by job #, date, or customer name.
+    const flat = [];
+    for (const sheet of Object.keys(data)) {
+      for (const j of data[sheet]) if (j.stage !== 'complete') flat.push({ ...j, sheet });
+    }
+    if (sortMode === 'jobnumber') flat.sort((a, b) => (a.jobNumber || '').localeCompare(b.jobNumber || '', undefined, { numeric: true }));
+    else if (sortMode === 'date') flat.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+    else if (sortMode === 'name') flat.sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
+    sectionsHTML = `<div class="job-list">${flat.map((j) => ownerTaggedCardHTML(j, j.sheet)).join('') || '<p class="muted-sm">No active jobs.</p>'}</div>`;
+  }
 
   content.innerHTML = `
+    <div class="sheet-toolbar">
+      <div class="toolbar-group">
+        <button class="chip ${sortMode === 'person' ? 'chip-active' : ''}" data-ajsort="person">Grouped by Person</button>
+        <button class="chip ${sortMode === 'status' ? 'chip-active' : ''}" data-ajsort="status">By Status</button>
+        <button class="chip ${sortMode === 'jobnumber' ? 'chip-active' : ''}" data-ajsort="jobnumber">Job #</button>
+        <button class="chip ${sortMode === 'date' ? 'chip-active' : ''}" data-ajsort="date">Date</button>
+        <button class="chip ${sortMode === 'name' ? 'chip-active' : ''}" data-ajsort="name">Name</button>
+      </div>
+    </div>
     <input type="text" id="alljobs-search" placeholder="Search all jobs…" class="search-input">
-    <div id="alljobs-sections">${sections}</div>
+    <div id="alljobs-sections">${sectionsHTML}</div>
   `;
+
+  document.querySelectorAll('[data-ajsort]').forEach((btn) => btn.addEventListener('click', () => { allJobsState.sortMode = btn.dataset.ajsort; paintAllJobs(); }));
 
   document.querySelectorAll('#alljobs-sections .job-card-row').forEach((row) => {
     row.addEventListener('click', () => {
@@ -50,4 +103,10 @@ async function renderAllJobsTab() {
       card.style.display = card.textContent.toLowerCase().includes(q) ? '' : 'none';
     });
   });
+}
+
+// Wraps jobCardHTML with a small "whose job is this" tag — used whenever
+// jobs from different people are shown outside their person-grouped section.
+function ownerTaggedCardHTML(job, sheet) {
+  return `<div class="owner-tagged"><span class="owner-tag">${PERSON_LABELS[sheet] || sheet}</span>${jobCardHTML(job, { editable: false, sheet })}</div>`;
 }

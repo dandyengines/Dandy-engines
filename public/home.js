@@ -58,12 +58,37 @@ async function renderHomeTab() {
       )
     : '';
 
+  const rottlerSection = data.rottlerStats ? `
+    <h2 class="dash-section-title">Rottler — Jobs Completed</h2>
+    <div class="dash-tiles">
+      ${tileHTML('This Week', data.rottlerStats.thisWeek, navTabIds.includes('rottler') ? 'rottler' : null)}
+      ${tileHTML('This Month', data.rottlerStats.thisMonth, navTabIds.includes('rottler') ? 'rottler' : null)}
+      ${tileHTML('This Year', data.rottlerStats.thisYear, navTabIds.includes('rottler') ? 'rottler' : null)}
+    </div>
+  ` : '';
+
+  const balancingSection = data.balancingStats ? `
+    <h2 class="dash-section-title">Balancing — Jobs Completed</h2>
+    <div class="dash-tiles">
+      ${tileHTML('This Week', data.balancingStats.thisWeek, navTabIds.includes('balancing') ? 'balancing' : null)}
+      ${tileHTML('This Month', data.balancingStats.thisMonth, navTabIds.includes('balancing') ? 'balancing' : null)}
+      ${tileHTML('This Year', data.balancingStats.thisYear, navTabIds.includes('balancing') ? 'balancing' : null)}
+    </div>
+  ` : '';
+
+  const dummyAssemblyTile = (data.dummyAssemblyCount !== undefined)
+    ? tileHTML('Awaiting Dummy Assembly (shop-wide)', data.dummyAssemblyCount, navTabIds.includes('alljobs') ? 'alljobs' : null)
+    : '';
+
   content.innerHTML = `
     ${personalSection}
+    ${rottlerSection}
+    ${balancingSection}
     <h2 class="dash-section-title">Shop-wide</h2>
     <div class="dash-tiles">
       ${tileHTML('Total Active Builds', data.shopWideActiveBuilds, navTabIds.includes('alljobs') ? 'alljobs' : null)}
       ${data.shopWideMachiningTotal !== null ? tileHTML('Total Active Machining', data.shopWideMachiningTotal, navTabIds.includes('allmachining') ? 'allmachining' : null) : ''}
+      ${dummyAssemblyTile}
       ${invoiceTile}
     </div>
   `;

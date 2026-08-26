@@ -258,6 +258,14 @@ button{cursor:pointer;}
 }
 .perm-cell{background:var(--bg);border:1px solid var(--hairline);border-radius:6px;color:var(--text);padding:4px 6px;font-size:12px;}
 
+/* --- Owner tag, shown when All Builds/All Machining aren't grouped by person --- */
+.owner-tagged{position:relative;}
+.owner-tag{
+  display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+  color:var(--muted);background:var(--panel-raised);border:1px solid var(--hairline);
+  border-radius:4px;padding:2px 6px;margin-bottom:4px;
+}
+
 /* --- Home dashboard --- */
 .dash-section-title{
   font-family:var(--heading-font);

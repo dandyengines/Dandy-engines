@@ -21,6 +21,22 @@ function ownMachiningSheetFor(personSheet) {
   return Object.keys(MACHINING_OWNERS).find((k) => MACHINING_OWNERS[k] === personSheet) || null;
 }
 
+// Calendar-period boundaries (not rolling windows) for the "completed this
+// year/month/week" stats — week starts Monday.
+function periodBoundaries() {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const day = now.getDay(); // 0=Sun..6=Sat
+  const diffToMonday = (day === 0 ? 6 : day - 1);
+  const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday);
+  return { startOfYear, startOfMonth, startOfWeek };
+}
+
+function countSince(dates, boundary) {
+  return dates.filter((d) => d && new Date(d) >= boundary).length;
+}
+
 // Tags each job with the tab id it should navigate to, so a mixed
 // Builds+Machining list (approaching deadlines, urgent jobs, awaiting
 // payment) can route each row to the correct place.
@@ -116,6 +132,37 @@ exports.handler = async (event) => {
     result.invoicesAwaitingPayment = { scope: 'personal', count: jobs.filter((j) => j.stage === 'awaitingpayment').length };
   } else {
     result.invoicesAwaitingPayment = null;
+  }
+
+  // ---------- Custom section: Gus's dashboard shows Rottler completion stats ----------
+  if (session.userId === 'gus') {
+    const rottler = await store.get('rottler', { type: 'json' });
+    const dates = (rottler?.entries || []).map((e) => e.dateAdded);
+    const { startOfYear, startOfMonth, startOfWeek } = periodBoundaries();
+    result.rottlerStats = {
+      thisYear: countSince(dates, startOfYear),
+      thisMonth: countSince(dates, startOfMonth),
+      thisWeek: countSince(dates, startOfWeek),
+    };
+  }
+
+  // ---------- Custom section: Josh's dashboard shows Balancing completion stats ----------
+  if (session.userId === 'josh') {
+    const balancing = await store.get('balancing', { type: 'json' });
+    const dates = (balancing?.entries || []).map((e) => e.dateAdded);
+    const { startOfYear, startOfMonth, startOfWeek } = periodBoundaries();
+    result.balancingStats = {
+      thisYear: countSince(dates, startOfYear),
+      thisMonth: countSince(dates, startOfMonth),
+      thisWeek: countSince(dates, startOfWeek),
+    };
+  }
+
+  // ---------- Custom section: Ulrich's dashboard gets an extra shop-wide tile ----------
+  if (session.userId === 'ulrich') {
+    let count = 0;
+    for (const sheet of BUILD_SHEET_IDS) count += (await loadSheet(store, sheet)).filter((j) => j.stage === 'dummyassembly').length;
+    result.dummyAssemblyCount = count;
   }
 
   return json(200, result);
