@@ -130,13 +130,14 @@ function buildNav() {
   bottomNav.innerHTML = '';
 
   // session.tabs now comes directly from the live, admin-editable permission
-  // matrix (see _permissions.js) — every entry (including builds_<person>
-  // and machining_<person>) is already the exact set this user can access,
-  // so there's no client-side expansion needed here anymore.
+  // matrix (see _permissions.js), already in this person's own custom order
+  // (see tab-order.js) — every entry (including builds_<person> and
+  // machining_<person>) is already the exact set this user can access.
   const navEntries = session.tabs
     .filter((t) => t !== 'history') // History is reached from inside Settings, not the sidebar
     .map((tabId) => ({ id: tabId, label: labelForTab(tabId) }));
 
+  // Desktop sidebar: full list, in the person's custom order.
   navEntries.forEach(({ id: tabId, label }) => {
     const sideBtn = document.createElement('button');
     sideBtn.className = 'tab-btn';
@@ -144,7 +145,11 @@ function buildNav() {
     sideBtn.textContent = label;
     sideBtn.addEventListener('click', () => setActiveTab(tabId));
     sidebarTabs.appendChild(sideBtn);
+  });
 
+  // Phone bottom bar: only the first three (their pinned "quick view"
+  // tabs) plus a grip handle that opens the full list as a swipe-up sheet.
+  navEntries.slice(0, 3).forEach(({ id: tabId, label }) => {
     const bottomBtn = document.createElement('button');
     bottomBtn.className = 'tab-btn';
     bottomBtn.dataset.tab = tabId;
@@ -152,11 +157,59 @@ function buildNav() {
     bottomBtn.addEventListener('click', () => setActiveTab(tabId));
     bottomNav.appendChild(bottomBtn);
   });
+  const gripBtn = document.createElement('button');
+  gripBtn.className = 'bottom-nav-grip';
+  gripBtn.setAttribute('aria-label', 'Show all tabs');
+  gripBtn.innerHTML = '<span class="grip-handle"></span><span class="grip-label">More</span>';
+  bottomNav.appendChild(gripBtn);
+  wireTabSheetGrip(gripBtn, navEntries);
 
   navLabelMap = Object.fromEntries(navEntries.map((e) => [e.id, e.label]));
   navTabIds = navEntries.map((e) => e.id);
 
   sidebarUser.textContent = `${session.name} · ${session.role}`;
+}
+
+// ===== Phone: swipe-up (or tap) sheet showing every tab =====
+function wireTabSheetGrip(gripBtn, navEntries) {
+  gripBtn.addEventListener('click', () => openTabSheet(navEntries));
+
+  // Swipe-up gesture as an alternative to tapping — a short upward drag
+  // starting on the grip opens the sheet; tap still works regardless, so
+  // this is purely an extra convenience, never a requirement.
+  let startY = null;
+  gripBtn.addEventListener('pointerdown', (e) => { startY = e.clientY; });
+  gripBtn.addEventListener('pointermove', (e) => {
+    if (startY === null) return;
+    if (startY - e.clientY > 30) { // dragged up at least 30px
+      startY = null;
+      openTabSheet(navEntries);
+    }
+  });
+  gripBtn.addEventListener('pointerup', () => { startY = null; });
+  gripBtn.addEventListener('pointercancel', () => { startY = null; });
+}
+
+function openTabSheet(navEntries) {
+  const overlay = document.getElementById('tab-sheet-overlay');
+  const grid = document.getElementById('tab-sheet-grid');
+  grid.innerHTML = navEntries.map(({ id, label }) => `
+    <button class="tab-sheet-btn ${id === activeTab ? 'active' : ''}" data-tab="${id}">${label}</button>
+  `).join('');
+  grid.querySelectorAll('.tab-sheet-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      closeTabSheet();
+      setActiveTab(btn.dataset.tab);
+    });
+  });
+  overlay.hidden = false;
+  requestAnimationFrame(() => overlay.classList.add('open'));
+}
+
+function closeTabSheet() {
+  const overlay = document.getElementById('tab-sheet-overlay');
+  overlay.classList.remove('open');
+  setTimeout(() => { overlay.hidden = true; }, 200);
 }
 
 function setActiveTab(tabId) {
@@ -262,6 +315,11 @@ function renderSettings() {
         ${[3, 5, 10].map((s) => `<button class="chip undo-duration-btn ${undoDuration === s ? 'chip-active' : ''}" data-secs="${s}">${s}s</button>`).join('')}
       </div>
     </div>
+    <div class="stub-card" style="margin-top:14px;">
+      <h2>Reorder My Tabs</h2>
+      <p class="muted-sm">Drag your tabs into whatever order suits you. Your first three become the quick-access buttons at the bottom on your phone.</p>
+      <button id="open-tab-order-btn" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Reorder Tabs</button>
+    </div>
     ${(session.role === 'admin' || session.perms?.settings === 'edit') ? `
     <div class="stub-card" style="margin-top:14px;">
       <h2>Manage Team Permissions</h2>
@@ -329,6 +387,10 @@ function wireSettings() {
   document.getElementById('open-permissions-btn')?.addEventListener('click', () => {
     document.getElementById('page-title').textContent = 'Manage Team Permissions';
     renderPermissionsTab();
+  });
+  document.getElementById('open-tab-order-btn')?.addEventListener('click', () => {
+    document.getElementById('page-title').textContent = 'Reorder My Tabs';
+    renderTabOrderTab();
   });
   document.getElementById('import-legacy-btn')?.addEventListener('click', checkImportStatus);
   document.getElementById('cleanup-jobnums-btn')?.addEventListener('click', checkCleanupStatus);
@@ -434,6 +496,20 @@ applyTheme();
 if (session) {
   showApp();
 }
+
+// Tab sheet: tap outside, or swipe down on the grip, to dismiss.
+const tabSheetOverlay = document.getElementById('tab-sheet-overlay');
+tabSheetOverlay.addEventListener('click', (e) => {
+  if (e.target.id === 'tab-sheet-overlay') closeTabSheet();
+});
+const tabSheetGrip = tabSheetOverlay.querySelector('.tab-sheet-grip');
+let sheetDragStartY = null;
+tabSheetGrip.addEventListener('pointerdown', (e) => { sheetDragStartY = e.clientY; });
+tabSheetGrip.addEventListener('pointermove', (e) => {
+  if (sheetDragStartY === null) return;
+  if (e.clientY - sheetDragStartY > 30) { sheetDragStartY = null; closeTabSheet(); }
+});
+tabSheetGrip.addEventListener('pointerup', () => { sheetDragStartY = null; });
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {

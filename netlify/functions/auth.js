@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { getBlobStore } = require('./_store');
 const { USERS } = require('./roles');
 const { loadMatrix, getPerm, TAB_IDS } = require('./_permissions');
+const { mergeTabOrder } = require('./tab-order');
 
 // Simple opaque session token store, backed by Netlify Blobs so it survives
 // across function invocations (each request may hit a different instance).
@@ -56,6 +57,11 @@ exports.handler = async (event) => {
     for (const tabId of TAB_IDS) perms[tabId] = getPerm(matrix, userId, tabId, isSuperAdmin);
     const tabs = TAB_IDS.filter((id) => perms[id] !== 'unseen');
 
+    // Apply this person's saved custom tab order, if they have one.
+    const orderStore = getBlobStore('jobs');
+    const savedOrders = (await orderStore.get('tab-order', { type: 'json' })) || {};
+    const orderedTabs = mergeTabOrder(tabs, savedOrders[userId]);
+
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -68,7 +74,7 @@ exports.handler = async (event) => {
         viewSheets: user.viewSheets,
         rottler: user.rottler,
         perms,
-        tabs,
+        tabs: orderedTabs,
       }),
     };
   } catch (err) {

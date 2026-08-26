@@ -5,7 +5,7 @@ const SHELL = [
   '/', '/styles.css',
   '/jobs.js', '/modal.js', '/undo.js', '/home.js', '/myjobs.js',
   '/alljobs.js', '/allmachining.js', '/tunnelvision.js', '/rottler.js',
-  '/balancing.js', '/partpayments.js', '/history.js', '/permissions-ui.js', '/machining.js',
+  '/balancing.js', '/partpayments.js', '/history.js', '/permissions-ui.js', '/tab-order-ui.js', '/machining.js',
   '/alerts.js', '/search.js', '/app.js',
   '/manifest.json', '/logo.webp',
 ];

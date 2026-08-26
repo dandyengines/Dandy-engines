@@ -45,8 +45,13 @@ function totals(ppData) {
   // their own Cash/EFT/Visa type — Cash deducts from the Cash bucket;
   // both EFT and Visa deduct from the EFT bucket (Visa is tracked
   // separately below purely for reference, same bucket underneath).
+  //
+  // A job marked Complete is fully settled — its whole balance (whatever's
+  // left of its payments minus its invoices) stops counting toward these
+  // running totals from that point on, not just archived from the list.
   let cash = 0, eft = 0, visaInvoiced = 0;
   for (const job of ppData.jobs) {
+    if (job.completed) continue;
     for (const p of job.payments) {
       if (p.type === 'cash') cash += p.amount;
       else if (p.type === 'eft') eft += p.amount;

@@ -255,19 +255,22 @@ function balancingRowHTML(e) {
   if (e.balancerBalanced) bits.push('Balancer balanced');
   if (e.raceBalance) bits.push(`Race balance (surcharge: ${escapeHtml(e.extraHoursSurcharge || '—')})`);
   if (e.internalExternal) bits.push(e.internalExternal);
-  if (e.bobWeight) bits.push(`Bob weight ${escapeHtml(e.bobWeight)}g`);
   if (e.balanceFactor) bits.push(`Balance factor ${escapeHtml(e.balanceFactor)}%`);
   if (e.heavyMetal) bits.push(`Heavy metal (${escapeHtml(e.numberOfPlugsUsed || '—')} plugs)`);
   if (e.clutch) bits.push('Clutch');
   if (e.mirrorNeutralBalance) bits.push(e.mirrorNeutralBalance);
   if (e.extraTimeSurcharge) bits.push(`Extra time surcharge: ${escapeHtml(e.extraTimeSurcharge)}`);
   const summaryBits = bits.slice(0, 3).join(', ');
+  // Bob weight is prioritized — shown in the summary line whenever it's
+  // set, regardless of how many other bits there are, same idea as
+  // Rottler always showing Piston OD/Bore/Clearance up front.
+  const bobWeightBit = e.bobWeight ? `Bob weight ${escapeHtml(e.bobWeight)}g` : '';
   return `
   <div class="job-card" data-entry-id="${e.id}">
     <div class="job-card-row">
       <div class="job-card-main">
-        <div class="job-card-title"><strong>${escapeHtml(e.jobNumber || '—')}</strong> ${escapeHtml(e.customer || '')}</div>
-        <div class="job-card-sub">${escapeHtml(e.engine || '')} · ${escapeHtml(e.balanceType || '')}${summaryBits ? ' · ' + summaryBits : ''}${bits.length > 3 ? '…' : ''}</div>
+        <div class="job-card-title"><strong>${escapeHtml(e.jobNumber || '—')}</strong> ${escapeHtml(e.customer || '')} ${e.notes ? '<span class="note-count">📝</span>' : ''}</div>
+        <div class="job-card-sub">${escapeHtml(e.engine || '')} · ${escapeHtml(e.balanceType || '')}${bobWeightBit ? ' · ' + bobWeightBit : ''}${summaryBits ? ' · ' + summaryBits : ''}${bits.length > 3 ? '…' : ''}</div>
       </div>
       <div class="job-card-meta">
         <span class="muted-sm">${formatDate(e.dateAdded)}</span>
@@ -286,7 +289,7 @@ function balancingRowHTML(e) {
         <div><span class="muted-sm">Balance Type</span><br>${escapeHtml(e.balanceType || '—')}</div>
       </div>
       <h4 style="margin-top:12px;">Details</h4>
-      ${bits.length ? `<p class="muted-sm">${bits.map(escapeHtml).join(' · ')}</p>` : '<p class="muted-sm">No balance details recorded.</p>'}
+      ${(bobWeightBit ? [bobWeightBit, ...bits] : bits).length ? `<p class="muted-sm">${(bobWeightBit ? [bobWeightBit, ...bits] : bits).map(escapeHtml).join(' · ')}</p>` : '<p class="muted-sm">No balance details recorded.</p>'}
       <div class="detail-grid" style="margin-top:8px;">
         <div><span class="muted-sm">Entered By</span><br>${escapeHtml(e.enteredBy || '—')}</div>
         <div><span class="muted-sm">Date</span><br>${formatDate(e.dateAdded)}</div>

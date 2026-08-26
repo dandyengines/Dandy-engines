@@ -57,6 +57,14 @@
   <!-- Phone bottom tab bar -->
   <nav class="bottom-nav" id="bottom-nav"></nav>
 
+  <!-- Phone: swipe-up (or tap) sheet showing every tab -->
+  <div id="tab-sheet-overlay" class="tab-sheet-overlay" hidden>
+    <div class="tab-sheet">
+      <div class="tab-sheet-grip"></div>
+      <div id="tab-sheet-grid" class="tab-sheet-grid"></div>
+    </div>
+  </div>
+
   <!-- Master search popup (hidden until opened) -->
   <div id="search-overlay" class="search-overlay" hidden>
     <div class="search-bubble">
@@ -91,6 +99,7 @@
 <script src="/partpayments.js"></script>
 <script src="/history.js"></script>
 <script src="/permissions-ui.js"></script>
+<script src="/tab-order-ui.js"></script>
 <script src="/machining.js"></script>
 <script src="/alerts.js"></script>
 <script src="/search.js"></script>

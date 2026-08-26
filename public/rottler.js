@@ -225,7 +225,7 @@ function rottlerRowHTML(e) {
   <div class="job-card" data-entry-id="${e.id}">
     <div class="job-card-row">
       <div class="job-card-main">
-        <div class="job-card-title"><strong>${escapeHtml(e.jobNumber || '—')}</strong> ${escapeHtml(e.customer || '')} ${e.redoOf ? '<span class="muted-sm">(redo)</span>' : ''}</div>
+        <div class="job-card-title"><strong>${escapeHtml(e.jobNumber || '—')}</strong> ${escapeHtml(e.customer || '')} ${e.redoOf ? '<span class="muted-sm">(redo)</span>' : ''} ${e.notes ? '<span class="note-count">📝</span>' : ''}</div>
         <div class="job-card-sub">${escapeHtml(e.engine || '')} · Piston OD ${e.pistonOD ?? '—'} · Bore ${e.boreSize ?? '—'} · Clearance ${e.clearance ?? '—'}${e.raceHone?.on ? ' · Race Hone' : ''}${e.torquePlate?.on ? ' · Torque Plate' : ''}</div>
       </div>
       <div class="job-card-meta">
