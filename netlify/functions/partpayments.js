@@ -4,8 +4,10 @@ const { recordHistory, clone } = require('./_history');
 const { notifyUser } = require('./_push');
 
 const SHEET_IDS = ['jake', 'mike', 'frank', 'sab', 'lou'];
+const MACHINING_SHEET_IDS = ['machining', 'machining_lou', 'machining_sab', 'machining_mike'];
 
-function canAccess(user) { return user.tabs.includes('partpayments'); }
+function canAccess(user) { return user.perms.partpayments !== 'unseen'; }
+function canEditPP(user) { return user.perms.partpayments === 'edit'; }
 function nowISO() { return new Date().toISOString(); }
 
 async function loadPP(store) {
@@ -18,6 +20,24 @@ async function loadSheet(store, sheet) {
   return data || { jobs: [], order: [] };
 }
 async function saveSheet(store, sheet, data) { await store.setJSON(`sheet:${sheet}`, data); }
+
+// Part Payments rows should show customer/engine like Builds rows do. Rather
+// than trust a stale snapshot, look this up live from Builds + Machining
+// every time — so it stays correct even if the customer/engine is edited
+// on the source job afterward.
+async function enrichWithCustomerEngine(store, jobs) {
+  const allSheets = [...SHEET_IDS, ...MACHINING_SHEET_IDS];
+  const sheetDatas = {};
+  for (const s of allSheets) sheetDatas[s] = await loadSheet(store, s);
+
+  return jobs.map((job) => {
+    for (const s of allSheets) {
+      const match = sheetDatas[s].jobs.find((j) => (j.jobNumber || '').toLowerCase() === job.jobNumber.toLowerCase());
+      if (match) return { ...job, customer: match.customer || '', engine: match.engine || '' };
+    }
+    return { ...job, customer: job.customer || '', engine: job.engine || '' };
+  });
+}
 
 function totals(ppData) {
   // Cash Held / EFT Held must reflect the NET position: gross payments
@@ -52,10 +72,12 @@ exports.handler = async (event) => {
 
   if (event.httpMethod === 'GET') {
     const data = await loadPP(store);
-    return json(200, { jobs: data.jobs, totals: totals(data) });
+    const jobs = await enrichWithCustomerEngine(store, data.jobs);
+    return json(200, { jobs, totals: totals(data) });
   }
 
   if (event.httpMethod === 'POST') {
+    if (!canEditPP(user)) return json(403, { error: 'Forbidden' });
     let body;
     try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Bad request' }); }
 
@@ -80,6 +102,7 @@ exports.handler = async (event) => {
         job = {
           jobNumber,
           personResponsible,
+          completed: false,
           payments: [],
           invoices: [],
         };
@@ -93,7 +116,7 @@ exports.handler = async (event) => {
             id: 'j_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
             jobNumber,
             customer: body.customer || '',
-            engine: '',
+            engine: body.engine || '',
             stage: 'notstarted',
             urgent: false,
             expectedFinish: null,
@@ -134,7 +157,7 @@ exports.handler = async (event) => {
         });
       }
 
-      return json(200, { job, totals: totals(data), createdNewJobOnSheet });
+      return json(200, { job: (await enrichWithCustomerEngine(store, [job]))[0], totals: totals(data), createdNewJobOnSheet });
     }
 
     if (body.action === 'addInvoice') {
@@ -155,7 +178,7 @@ exports.handler = async (event) => {
       });
       await recordHistory(store, { key: 'partpayments', before, description: `${user.name} added invoice #${body.invoiceNumber || '(no #)'} to job ${job.jobNumber}`, userName: user.name, area: 'partpayments' });
       await savePP(store, data);
-      return json(200, { job, totals: totals(data) });
+      return json(200, { job: (await enrichWithCustomerEngine(store, [job]))[0], totals: totals(data) });
     }
 
     if (body.action === 'updatePayment') {
@@ -170,7 +193,7 @@ exports.handler = async (event) => {
       if ('date' in patch) payment.date = patch.date;
       await recordHistory(store, { key: 'partpayments', before, description: `${user.name} edited a payment on job ${job.jobNumber}`, userName: user.name, area: 'partpayments' });
       await savePP(store, data);
-      return json(200, { job, totals: totals(data) });
+      return json(200, { job: (await enrichWithCustomerEngine(store, [job]))[0], totals: totals(data) });
     }
 
     if (body.action === 'deletePayment') {
@@ -182,7 +205,7 @@ exports.handler = async (event) => {
       const [removed] = job.payments.splice(idx, 1);
       await recordHistory(store, { key: 'partpayments', before, description: `${user.name} deleted a payment on job ${job.jobNumber}`, userName: user.name, area: 'partpayments' });
       await savePP(store, data);
-      return json(200, { job, totals: totals(data), removed });
+      return json(200, { job: (await enrichWithCustomerEngine(store, [job]))[0], totals: totals(data), removed });
     }
 
     if (body.action === 'updateInvoice') {
@@ -199,7 +222,7 @@ exports.handler = async (event) => {
       if ('paymentType' in patch) { if (!['cash', 'eft', 'visa'].includes(patch.paymentType)) return json(400, { error: 'Invoice payment type must be cash, eft, or visa' }); invoice.paymentType = patch.paymentType; }
       await recordHistory(store, { key: 'partpayments', before, description: `${user.name} edited invoice #${invoice.invoiceNumber || '(no #)'} on job ${job.jobNumber}`, userName: user.name, area: 'partpayments' });
       await savePP(store, data);
-      return json(200, { job, totals: totals(data) });
+      return json(200, { job: (await enrichWithCustomerEngine(store, [job]))[0], totals: totals(data) });
     }
 
     if (body.action === 'deleteInvoice') {
@@ -211,7 +234,60 @@ exports.handler = async (event) => {
       const [removed] = job.invoices.splice(idx, 1);
       await recordHistory(store, { key: 'partpayments', before, description: `${user.name} deleted invoice #${removed.invoiceNumber || '(no #)'} on job ${job.jobNumber}`, userName: user.name, area: 'partpayments' });
       await savePP(store, data);
-      return json(200, { job, totals: totals(data), removed });
+      return json(200, { job: (await enrichWithCustomerEngine(store, [job]))[0], totals: totals(data), removed });
+    }
+
+    // ---------- Whole-job actions (job#/person responsible, Complete, Delete) ----------
+    if (body.action === 'updateJob') {
+      const before = clone(data);
+      const job = data.jobs.find((j) => j.jobNumber.toLowerCase() === (body.jobNumber || '').toLowerCase());
+      if (!job) return json(404, { error: 'Job not found in Part Payments' });
+      const patch = body.patch || {};
+      if ('jobNumber' in patch) {
+        const newNumber = (patch.jobNumber || '').trim();
+        if (!newNumber) return json(400, { error: 'Job # required' });
+        const clash = data.jobs.find((j) => j !== job && j.jobNumber.toLowerCase() === newNumber.toLowerCase());
+        if (clash) return json(400, { error: 'Another Part Payments entry already uses that job #' });
+        job.jobNumber = newNumber;
+      }
+      if ('personResponsible' in patch) {
+        if (!SHEET_IDS.includes(patch.personResponsible)) return json(400, { error: 'Person responsible must be Jake/Mike/Lou/Sab/Frank' });
+        job.personResponsible = patch.personResponsible;
+      }
+      await recordHistory(store, { key: 'partpayments', before, description: `${user.name} edited Part Payments job ${job.jobNumber}`, userName: user.name, area: 'partpayments' });
+      await savePP(store, data);
+      return json(200, { job: (await enrichWithCustomerEngine(store, [job]))[0], totals: totals(data) });
+    }
+
+    if (body.action === 'setJobCompleted') {
+      const before = clone(data);
+      const job = data.jobs.find((j) => j.jobNumber.toLowerCase() === (body.jobNumber || '').toLowerCase());
+      if (!job) return json(404, { error: 'Job not found in Part Payments' });
+      job.completed = !!body.completed;
+      await recordHistory(store, { key: 'partpayments', before, description: `${user.name} marked Part Payments job ${job.jobNumber} ${job.completed ? 'complete' : 'not complete'}`, userName: user.name, area: 'partpayments' });
+      await savePP(store, data);
+      return json(200, { job: (await enrichWithCustomerEngine(store, [job]))[0], totals: totals(data) });
+    }
+
+    if (body.action === 'deleteJob') {
+      const before = clone(data);
+      const idx = data.jobs.findIndex((j) => j.jobNumber.toLowerCase() === (body.jobNumber || '').toLowerCase());
+      if (idx === -1) return json(404, { error: 'Job not found in Part Payments' });
+      const [removed] = data.jobs.splice(idx, 1);
+      await recordHistory(store, { key: 'partpayments', before, description: `${user.name} deleted Part Payments job ${removed.jobNumber}`, userName: user.name, area: 'partpayments' });
+      await savePP(store, data);
+      return json(200, { removed, removedIndex: idx, totals: totals(data) });
+    }
+
+    if (body.action === 'restoreJob') {
+      const before = clone(data);
+      const job = body.job;
+      if (!job || !job.jobNumber) return json(400, { error: 'job required' });
+      const idx = Math.min(Math.max(body.atIndex ?? data.jobs.length, 0), data.jobs.length);
+      data.jobs.splice(idx, 0, job);
+      await recordHistory(store, { key: 'partpayments', before, description: `${user.name} restored (undo) Part Payments job ${job.jobNumber}`, userName: user.name, area: 'partpayments' });
+      await savePP(store, data);
+      return json(200, { job: (await enrichWithCustomerEngine(store, [job]))[0], totals: totals(data) });
     }
 
     return json(400, { error: 'Unknown action' });

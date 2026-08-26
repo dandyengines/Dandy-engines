@@ -221,7 +221,7 @@ function paintRottlerList() {
 
 function rottlerRowHTML(e) {
   return `
-  <div class="job-card">
+  <div class="job-card" data-entry-id="${e.id}">
     <div class="job-card-row" style="cursor:default;">
       <div class="job-card-main">
         <div class="job-card-title"><strong>${escapeHtml(e.jobNumber || '—')}</strong> ${escapeHtml(e.customer || '')} ${e.redoOf ? '<span class="muted-sm">(redo)</span>' : ''}</div>
@@ -230,7 +230,11 @@ function rottlerRowHTML(e) {
       <div class="job-card-meta">
         <span class="muted-sm">${formatDate(e.dateAdded)}</span>
         <span class="muted-sm">${escapeHtml(e.enteredBy || '')}</span>
-        ${rottlerState.canInput ? `<button class="rottler-redo-btn" data-redo-id="${e.id}">↻ Redo</button>` : ''}
+        ${rottlerState.canInput ? `
+          <button class="rottler-redo-btn" data-redo-id="${e.id}">↻ Redo</button>
+          <button class="rottler-edit-btn">✎ Edit</button>
+          <button class="rottler-delete-btn">🗑 Delete</button>
+        ` : ''}
       </div>
     </div>
     ${e.notes ? `<div class="job-card-detail"><p class="muted-sm">${escapeHtml(e.notes)}</p></div>` : ''}
@@ -244,6 +248,96 @@ function wireRottlerRedoButtons() {
       if (!original) return;
       openRottlerRedoForm(original);
     });
+  });
+
+  document.querySelectorAll('.rottler-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.closest('.job-card').dataset.entryId;
+      const entry = rottlerState.entries.find((e) => e.id === id);
+      if (entry) openRottlerEditModal(entry);
+    });
+  });
+
+  document.querySelectorAll('.rottler-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.closest('.job-card').dataset.entryId;
+      if (!confirm('Delete this Rottler entry? You can undo for a few seconds after.')) return;
+      let removed, removedIndex;
+      try {
+        ({ removed, removedIndex } = await api('/.netlify/functions/rottler', { method: 'POST', body: JSON.stringify({ action: 'delete', entryId: id }) }));
+      } catch (e) { alert("Couldn't delete: " + e.message); return; }
+      rottlerState.entries = rottlerState.entries.filter((e) => e.id !== id);
+      paintRottlerList();
+      showUndoToast(`Deleted Rottler entry for ${removed.jobNumber || '(no #)'}.`, async () => {
+        await api('/.netlify/functions/rottler', { method: 'POST', body: JSON.stringify({ action: 'restore', entry: removed, atIndex: removedIndex }) });
+        await renderRottlerTab();
+      });
+    });
+  });
+}
+
+function openRottlerEditModal(entry) {
+  const form = openModal(`
+    <h2>Edit Rottler Entry</h2>
+    <div class="detail-grid">
+      <label>Job # <input type="text" class="ref-jobnumber" value="${escapeHtml(entry.jobNumber || '')}"></label>
+      <label>Customer <input type="text" class="ref-customer" value="${escapeHtml(entry.customer || '')}"></label>
+      <label>Engine <input type="text" class="ref-engine" value="${escapeHtml(entry.engine || '')}"></label>
+      <label>Piston OD <input type="number" step="0.0001" class="ref-pistonod" value="${entry.pistonOD ?? ''}"></label>
+      <label>Bore Size <input type="number" step="0.0001" class="ref-boresize" value="${entry.boreSize ?? ''}"></label>
+    </div>
+    <div class="rottler-toggle-row" style="margin-top:14px;">
+      <label class="urgent-toggle"><input type="checkbox" class="ref-torque-on" ${entry.torquePlate?.on ? 'checked' : ''}> Torque Plate</label>
+      <input type="text" class="ref-torque-value rf-inline-input" placeholder="Torque value" value="${escapeHtml(entry.torquePlate?.value || '')}" style="${entry.torquePlate?.on ? '' : 'display:none;'}max-width:160px;">
+    </div>
+    <div class="rottler-toggle-row">
+      <label class="urgent-toggle"><input type="checkbox" class="ref-race-on" ${entry.raceHone?.on ? 'checked' : ''}> Race Hone</label>
+    </div>
+    <div class="detail-grid ref-race-fields" style="${entry.raceHone?.on ? '' : 'display:none;'}margin-top:6px;">
+      <label>RPK <input type="text" class="ref-rpk" value="${escapeHtml(entry.raceHone?.rpk || '')}"></label>
+      <label>RK <input type="text" class="ref-rk" value="${escapeHtml(entry.raceHone?.rk || '')}"></label>
+      <label>RVK <input type="text" class="ref-rvk" value="${escapeHtml(entry.raceHone?.rvk || '')}"></label>
+      <label>Angle <input type="text" class="ref-angle" value="${escapeHtml(entry.raceHone?.angle || '')}"></label>
+      <label>Stones used <input type="text" class="ref-stonesused" value="${escapeHtml(entry.raceHone?.stonesUsed || '')}"></label>
+    </div>
+    <label style="display:block;margin-top:10px;">Notes<textarea class="ref-notes" rows="2" style="width:100%;">${escapeHtml(entry.notes || '')}</textarea></label>
+    <div style="margin-top:10px;display:flex;gap:8px;">
+      <button id="ref-save" class="btn-primary">Save</button>
+      <button id="ref-cancel">Cancel</button>
+    </div>
+  `);
+  form.querySelector('.ref-torque-on').addEventListener('change', (e) => {
+    form.querySelector('.ref-torque-value').style.display = e.target.checked ? 'inline-block' : 'none';
+  });
+  form.querySelector('.ref-race-on').addEventListener('change', (e) => {
+    form.querySelector('.ref-race-fields').style.display = e.target.checked ? 'grid' : 'none';
+  });
+  document.getElementById('ref-cancel').addEventListener('click', () => closeModal());
+  document.getElementById('ref-save').addEventListener('click', async () => {
+    const patch = {
+      jobNumber: form.querySelector('.ref-jobnumber').value,
+      customer: form.querySelector('.ref-customer').value,
+      engine: form.querySelector('.ref-engine').value,
+      pistonOD: form.querySelector('.ref-pistonod').value,
+      boreSize: form.querySelector('.ref-boresize').value,
+      torquePlate: { on: form.querySelector('.ref-torque-on').checked, value: form.querySelector('.ref-torque-value').value },
+      raceHone: form.querySelector('.ref-race-on').checked ? {
+        on: true,
+        rpk: form.querySelector('.ref-rpk').value,
+        rk: form.querySelector('.ref-rk').value,
+        rvk: form.querySelector('.ref-rvk').value,
+        angle: form.querySelector('.ref-angle').value,
+        stonesUsed: form.querySelector('.ref-stonesused').value,
+      } : { on: false },
+      notes: form.querySelector('.ref-notes').value,
+    };
+    try {
+      const { entry: updated } = await api('/.netlify/functions/rottler', { method: 'POST', body: JSON.stringify({ action: 'update', entryId: entry.id, patch }) });
+      const idx = rottlerState.entries.findIndex((e) => e.id === entry.id);
+      if (idx >= 0) rottlerState.entries[idx] = updated;
+      closeModal();
+      paintRottlerList();
+    } catch (e) { alert("Couldn't save: " + e.message); }
   });
 }
 

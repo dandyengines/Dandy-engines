@@ -146,7 +146,7 @@ function importRottlerWorkbook(workbook) {
 
 exports.handler = async (event) => {
   const session = await getSession(event);
-  if (!session || session.user.role !== 'admin') return json(403, { error: 'Forbidden' });
+  if (!session || !(session.user.isSuperAdmin || session.user.perms.settings === 'edit')) return json(403, { error: 'Forbidden' });
 
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 

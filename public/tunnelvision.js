@@ -25,10 +25,13 @@ function paintTV() {
 
   const totalValue = jobs.reduce((s, j) => s + (j.value || 0), 0);
   const totalPaid = jobs.reduce((s, j) => s + (j.paid || 0), 0);
+  // "Jobs" tile counts only active (not-yet-complete) jobs — completed TV
+  // jobs (badge === 'green') are excluded from this total.
+  const activeJobsCount = jobs.filter((j) => j.badge !== 'green').length;
 
   content.innerHTML = `
     <div class="tv-summary">
-      <div><span class="tv-summary-num">${jobs.length}</span><span class="tv-summary-lbl">Jobs</span></div>
+      <div><span class="tv-summary-num">${activeJobsCount}</span><span class="tv-summary-lbl">Jobs</span></div>
       <div><span class="tv-summary-num">$${totalValue.toFixed(0)}</span><span class="tv-summary-lbl">Total Value</span></div>
       <div><span class="tv-summary-num">$${totalPaid.toFixed(0)}</span><span class="tv-summary-lbl">Total Paid</span></div>
       <div><span class="tv-summary-num">$${(totalValue - totalPaid).toFixed(0)}</span><span class="tv-summary-lbl">Owing</span></div>
@@ -67,7 +70,12 @@ function tvCardHTML(job) {
       </div>
     </div>
     <div class="job-card-detail" hidden>
-      <div class="tv-components">
+      <div class="detail-grid">
+        <label>TV # <input type="text" class="tv-f-tvnumber" value="${escapeHtml(job.tvNumber || '')}"></label>
+        <label>Customer <input type="text" class="tv-f-customer" value="${escapeHtml(job.customer || '')}"></label>
+        <label>Engine <input type="text" class="tv-f-engine" value="${escapeHtml(job.engine || '')}"></label>
+      </div>
+      <div class="tv-components" style="margin-top:12px;">
         ${tvComponentRow('block', 'Block', job.block.status, opts.BLOCK_STATUSES, opts.LABELS)}
         ${tvComponentRow('head', 'Cylinder Head', job.head.status, opts.HEAD_STATUSES, opts.LABELS)}
         ${tvComponentRow('rods', 'Conrods', job.rods.status, opts.RODS_STATUSES, opts.LABELS)}
@@ -86,6 +94,10 @@ function tvCardHTML(job) {
           <input type="text" class="tv-f-newnote" placeholder="Add a note...">
           <button class="tv-btn-addnote">Add</button>
         </div>
+      </div>
+      <div class="job-actions-row">
+        <button class="tv-btn-complete">✓ Complete</button>
+        <button class="tv-btn-delete">🗑 Delete</button>
       </div>
     </div>
   </div>`;
@@ -108,6 +120,58 @@ function wireTVCards() {
     row.addEventListener('click', () => { detail.hidden = !detail.hidden; });
 
     const tvId = card.dataset.tvId;
+
+    const saveDetails = async () => {
+      try {
+        const { job } = await api('/.netlify/functions/tunnelvision', {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'updateDetails', jobId: tvId,
+            patch: {
+              tvNumber: card.querySelector('.tv-f-tvnumber').value,
+              customer: card.querySelector('.tv-f-customer').value,
+              engine: card.querySelector('.tv-f-engine').value,
+            },
+          }),
+        });
+        Object.assign(tvState.data.jobs.find((j) => j.id === tvId), job);
+        paintTV();
+      } catch (err) { alert("Couldn't save: " + err.message); }
+    };
+    card.querySelector('.tv-f-tvnumber')?.addEventListener('click', (e) => e.stopPropagation());
+    card.querySelector('.tv-f-customer')?.addEventListener('click', (e) => e.stopPropagation());
+    card.querySelector('.tv-f-engine')?.addEventListener('click', (e) => e.stopPropagation());
+    card.querySelector('.tv-f-tvnumber')?.addEventListener('change', saveDetails);
+    card.querySelector('.tv-f-customer')?.addEventListener('change', saveDetails);
+    card.querySelector('.tv-f-engine')?.addEventListener('change', saveDetails);
+
+    card.querySelector('.tv-btn-complete')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      let previousStatuses;
+      try {
+        ({ previousStatuses } = await api('/.netlify/functions/tunnelvision', { method: 'POST', body: JSON.stringify({ action: 'complete', jobId: tvId }) }));
+      } catch (err) { alert("Couldn't mark complete: " + err.message); return; }
+      await renderTunnelVisionTab();
+      showUndoToast('TV job marked complete.', async () => {
+        await api('/.netlify/functions/tunnelvision', { method: 'POST', body: JSON.stringify({ action: 'setComponents', jobId: tvId, statuses: previousStatuses }) });
+        await renderTunnelVisionTab();
+      });
+    });
+
+    card.querySelector('.tv-btn-delete')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('Delete this TV job? You can undo for a few seconds after.')) return;
+      let removed, removedIndex;
+      try {
+        ({ removed, removedIndex } = await api('/.netlify/functions/tunnelvision', { method: 'POST', body: JSON.stringify({ action: 'delete', jobId: tvId }) }));
+      } catch (err) { alert("Couldn't delete: " + err.message); return; }
+      tvState.data.jobs = tvState.data.jobs.filter((j) => j.id !== tvId);
+      paintTV();
+      showUndoToast(`Deleted TV job ${removed.tvNumber || '(no #)'}.`, async () => {
+        await api('/.netlify/functions/tunnelvision', { method: 'POST', body: JSON.stringify({ action: 'restore', job: removed, atIndex: removedIndex }) });
+        await renderTunnelVisionTab();
+      });
+    });
 
     card.querySelectorAll('.tv-f-comp').forEach((sel) => {
       sel.addEventListener('click', (e) => e.stopPropagation());

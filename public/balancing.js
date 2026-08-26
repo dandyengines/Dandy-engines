@@ -243,6 +243,7 @@ function paintBalancingList() {
   }
 
   list.innerHTML = filtered.map(balancingRowHTML).join('') || '<p class="muted-sm">No entries found.</p>';
+  wireBalancingRowButtons();
 }
 
 function balancingRowHTML(e) {
@@ -255,7 +256,7 @@ function balancingRowHTML(e) {
   if (e.heavyMetal) bits.push('Heavy metal');
   if (e.clutch) bits.push('Clutch');
   return `
-  <div class="job-card">
+  <div class="job-card" data-entry-id="${e.id}">
     <div class="job-card-row" style="cursor:default;">
       <div class="job-card-main">
         <div class="job-card-title"><strong>${escapeHtml(e.jobNumber || '—')}</strong> ${escapeHtml(e.customer || '')}</div>
@@ -264,8 +265,126 @@ function balancingRowHTML(e) {
       <div class="job-card-meta">
         <span class="muted-sm">${formatDate(e.dateAdded)}</span>
         <span class="muted-sm">${escapeHtml(e.enteredBy || '')}</span>
+        ${balancingState.canInput ? `
+          <button class="balancing-edit-btn">✎ Edit</button>
+          <button class="balancing-delete-btn">🗑 Delete</button>
+        ` : ''}
       </div>
     </div>
     ${e.notes ? `<div class="job-card-detail"><p class="muted-sm">${escapeHtml(e.notes)}</p></div>` : ''}
   </div>`;
+}
+
+function wireBalancingRowButtons() {
+  document.querySelectorAll('.balancing-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.closest('.job-card').dataset.entryId;
+      const entry = balancingState.entries.find((e) => e.id === id);
+      if (entry) openBalancingEditModal(entry);
+    });
+  });
+  document.querySelectorAll('.balancing-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.closest('.job-card').dataset.entryId;
+      if (!confirm('Delete this Balancing entry? You can undo for a few seconds after.')) return;
+      let removed, removedIndex;
+      try {
+        ({ removed, removedIndex } = await api('/.netlify/functions/balancing', { method: 'POST', body: JSON.stringify({ action: 'delete', entryId: id }) }));
+      } catch (e) { alert("Couldn't delete: " + e.message); return; }
+      balancingState.entries = balancingState.entries.filter((e) => e.id !== id);
+      paintBalancingList();
+      showUndoToast(`Deleted Balancing entry for ${removed.jobNumber || '(no #)'}.`, async () => {
+        await api('/.netlify/functions/balancing', { method: 'POST', body: JSON.stringify({ action: 'restore', entry: removed, atIndex: removedIndex }) });
+        await renderBalancingTab();
+      });
+    });
+  });
+}
+
+function openBalancingEditModal(entry) {
+  const form = openModal(`
+    <h2>Edit Balancing Entry</h2>
+    <div class="detail-grid">
+      <label>Job # <input type="text" class="bef-jobnumber" value="${escapeHtml(entry.jobNumber || '')}"></label>
+      <label>Customer <input type="text" class="bef-customer" value="${escapeHtml(entry.customer || '')}"></label>
+      <label>Engine <input type="text" class="bef-engine" value="${escapeHtml(entry.engine || '')}"></label>
+      <label>Balance Type
+        <select class="bef-balancetype">
+          ${BALANCE_TYPES.map((t) => `<option value="${t}" ${t === entry.balanceType ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+      </label>
+    </div>
+    <div class="bef-fields" style="margin-top:14px;"></div>
+    <label style="display:block;margin-top:10px;">Notes<textarea class="bef-notes" rows="2" style="width:100%;">${escapeHtml(entry.notes || '')}</textarea></label>
+    <div style="margin-top:10px;display:flex;gap:8px;">
+      <button id="bef-save" class="btn-primary">Save</button>
+      <button id="bef-cancel">Cancel</button>
+    </div>
+  `);
+
+  const typeSelect = form.querySelector('.bef-balancetype');
+  const fieldsHolder = form.querySelector('.bef-fields');
+  const renderFields = () => {
+    fieldsHolder.innerHTML = balancingFieldsHTML(typeSelect.value).replace(/id="baf-/g, 'id="bef-f-');
+    // Prefill from the existing entry.
+    const setChecked = (id, val) => { const el = fieldsHolder.querySelector('#' + id); if (el) el.checked = !!val; };
+    const setVal = (id, val) => { const el = fieldsHolder.querySelector('#' + id); if (el) el.value = val || ''; };
+    setChecked('bef-f-pistons', entry.pistonsBalanced);
+    setChecked('bef-f-rods', entry.rodsBalanced);
+    setChecked('bef-f-flywheelflexplate', entry.flywheelFlexplateBalanced);
+    setChecked('bef-f-balancer', entry.balancerBalanced);
+    setChecked('bef-f-race', entry.raceBalance);
+    setVal('bef-f-racesurcharge', entry.extraHoursSurcharge);
+    if (fieldsHolder.querySelector('#bef-f-racesurcharge')) fieldsHolder.querySelector('#bef-f-racesurcharge').style.display = entry.raceBalance ? 'inline-block' : 'none';
+    setVal('bef-f-internalexternal', entry.internalExternal);
+    setVal('bef-f-bobweight', entry.bobWeight);
+    setVal('bef-f-balancefactor', entry.balanceFactor);
+    setChecked('bef-f-heavymetal', entry.heavyMetal);
+    setVal('bef-f-plugsused', entry.numberOfPlugsUsed);
+    if (fieldsHolder.querySelector('#bef-f-plugsused')) fieldsHolder.querySelector('#bef-f-plugsused').style.display = entry.heavyMetal ? 'inline-block' : 'none';
+    setChecked('bef-f-clutch', entry.clutch);
+    setVal('bef-f-mirrorneutral', entry.mirrorNeutralBalance);
+    setVal('bef-f-timesurcharge', entry.extraTimeSurcharge);
+
+    const raceOn = fieldsHolder.querySelector('#bef-f-race');
+    raceOn?.addEventListener('change', () => { fieldsHolder.querySelector('#bef-f-racesurcharge').style.display = raceOn.checked ? 'inline-block' : 'none'; });
+    const heavyMetalOn = fieldsHolder.querySelector('#bef-f-heavymetal');
+    heavyMetalOn?.addEventListener('change', () => { fieldsHolder.querySelector('#bef-f-plugsused').style.display = heavyMetalOn.checked ? 'inline-block' : 'none'; });
+  };
+  typeSelect.addEventListener('change', renderFields);
+  renderFields();
+
+  document.getElementById('bef-cancel').addEventListener('click', () => closeModal());
+  document.getElementById('bef-save').addEventListener('click', async () => {
+    const val = (id) => fieldsHolder.querySelector('#' + id)?.value;
+    const checked = (id) => !!fieldsHolder.querySelector('#' + id)?.checked;
+    const patch = {
+      jobNumber: form.querySelector('.bef-jobnumber').value,
+      customer: form.querySelector('.bef-customer').value,
+      engine: form.querySelector('.bef-engine').value,
+      balanceType: typeSelect.value,
+      pistonsBalanced: checked('bef-f-pistons'),
+      rodsBalanced: checked('bef-f-rods'),
+      flywheelFlexplateBalanced: checked('bef-f-flywheelflexplate'),
+      balancerBalanced: checked('bef-f-balancer'),
+      raceBalance: checked('bef-f-race'),
+      extraHoursSurcharge: val('bef-f-racesurcharge'),
+      internalExternal: val('bef-f-internalexternal'),
+      bobWeight: val('bef-f-bobweight'),
+      balanceFactor: val('bef-f-balancefactor'),
+      heavyMetal: checked('bef-f-heavymetal'),
+      numberOfPlugsUsed: val('bef-f-plugsused'),
+      clutch: checked('bef-f-clutch'),
+      mirrorNeutralBalance: val('bef-f-mirrorneutral'),
+      extraTimeSurcharge: val('bef-f-timesurcharge'),
+      notes: form.querySelector('.bef-notes').value,
+    };
+    try {
+      const { entry: updated } = await api('/.netlify/functions/balancing', { method: 'POST', body: JSON.stringify({ action: 'update', entryId: entry.id, patch }) });
+      const idx = balancingState.entries.findIndex((e) => e.id === entry.id);
+      if (idx >= 0) balancingState.entries[idx] = updated;
+      closeModal();
+      paintBalancingList();
+    } catch (e) { alert("Couldn't save: " + e.message); }
+  });
 }

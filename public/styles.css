@@ -249,6 +249,15 @@ button{cursor:pointer;}
 }
 .job-actions-row .btn-delete{color:var(--de-red);border-color:var(--de-red);}
 
+/* --- Manage Team Permissions table (plain/functional, not fancy) --- */
+.perm-table{border-collapse:collapse;font-size:12px;white-space:nowrap;}
+.perm-table th, .perm-table td{border:1px solid var(--hairline);padding:6px 8px;}
+.perm-table th{background:var(--panel-raised);position:sticky;top:0;}
+.perm-table td:first-child, .perm-table th:first-child{
+  position:sticky;left:0;background:var(--panel);text-align:left;font-weight:600;
+}
+.perm-cell{background:var(--bg);border:1px solid var(--hairline);border-radius:6px;color:var(--text);padding:4px 6px;font-size:12px;}
+
 /* --- Home dashboard --- */
 .dash-section-title{
   font-family:var(--heading-font);

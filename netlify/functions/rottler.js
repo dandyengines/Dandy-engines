@@ -8,8 +8,8 @@ const SHEET_IDS = ['jake', 'mike', 'frank', 'sab', 'lou'];
 const MACHINING_SHEET_IDS = ['machining', 'machining_lou', 'machining_sab', 'machining_mike'];
 const ALL_LINKABLE_SHEET_IDS = [...SHEET_IDS, ...MACHINING_SHEET_IDS];
 
-function canView(user) { return user.rottler !== null && user.rottler !== undefined; }
-function canInput(user) { return user.role === 'admin' || user.rottler === 'input'; }
+function canView(user) { return user.perms.rottler !== 'unseen'; }
+function canInput(user) { return user.perms.rottler === 'edit'; }
 
 function nowISO() { return new Date().toISOString(); }
 
@@ -143,6 +143,41 @@ exports.handler = async (event) => {
         }
       }
 
+      return json(200, { entry });
+    }
+
+    if (body.action === 'update') {
+      const before = clone(data);
+      const entry = data.entries.find((e) => e.id === body.entryId);
+      if (!entry) return json(404, { error: 'Entry not found' });
+      const patchable = ['jobNumber', 'customer', 'engine', 'pistonOD', 'boreSize', 'torquePlate', 'raceHone', 'notes'];
+      for (const key of patchable) if (key in (body.patch || {})) entry[key] = body.patch[key];
+      // Recompute clearance if either dimension changed.
+      const p = parseFloat(entry.pistonOD), b = parseFloat(entry.boreSize);
+      entry.clearance = (!isNaN(p) && !isNaN(b)) ? +(b - p).toFixed(4) : null;
+      await recordHistory(rStore, { key: 'rottler', before, description: `${user.name} edited Rottler entry for job ${entry.jobNumber || '(no #)'}`, userName: user.name, area: 'rottler' });
+      await saveRottler(rStore, data);
+      return json(200, { entry });
+    }
+
+    if (body.action === 'delete') {
+      const before = clone(data);
+      const idx = data.entries.findIndex((e) => e.id === body.entryId);
+      if (idx === -1) return json(404, { error: 'Entry not found' });
+      const [removed] = data.entries.splice(idx, 1);
+      await recordHistory(rStore, { key: 'rottler', before, description: `${user.name} deleted Rottler entry for job ${removed.jobNumber || '(no #)'}`, userName: user.name, area: 'rottler' });
+      await saveRottler(rStore, data);
+      return json(200, { removed, removedIndex: idx });
+    }
+
+    if (body.action === 'restore') {
+      const before = clone(data);
+      const entry = body.entry;
+      if (!entry || !entry.id) return json(400, { error: 'entry required' });
+      const idx = Math.min(Math.max(body.atIndex ?? data.entries.length, 0), data.entries.length);
+      data.entries.splice(idx, 0, entry);
+      await recordHistory(rStore, { key: 'rottler', before, description: `${user.name} restored (undo) Rottler entry for job ${entry.jobNumber || '(no #)'}`, userName: user.name, area: 'rottler' });
+      await saveRottler(rStore, data);
       return json(200, { entry });
     }
 

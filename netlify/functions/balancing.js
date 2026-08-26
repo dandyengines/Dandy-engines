@@ -6,8 +6,8 @@ const BUILD_SHEET_IDS = ['jake', 'mike', 'frank', 'sab', 'lou'];
 const MACHINING_SHEET_IDS = ['machining', 'machining_lou', 'machining_sab', 'machining_mike'];
 const ALL_LINKABLE_SHEET_IDS = [...BUILD_SHEET_IDS, ...MACHINING_SHEET_IDS];
 
-function canView(user) { return user.tabs.includes('balancing'); }
-function canInput(user) { return user.role === 'admin' || user.balancing === 'input'; }
+function canView(user) { return user.perms.balancing !== 'unseen'; }
+function canInput(user) { return user.perms.balancing === 'edit'; }
 
 function nowISO() { return new Date().toISOString(); }
 
@@ -153,7 +153,18 @@ exports.handler = async (event) => {
       const [removed] = data.entries.splice(idx, 1);
       await recordHistory(store, { key: 'balancing', before, description: `${user.name} deleted Balancing entry for job ${removed.jobNumber || '(no #)'}`, userName: user.name, area: 'balancing' });
       await saveBalancing(store, data);
-      return json(200, { removed });
+      return json(200, { removed, removedIndex: idx });
+    }
+
+    if (body.action === 'restore') {
+      const before = clone(data);
+      const entry = body.entry;
+      if (!entry || !entry.id) return json(400, { error: 'entry required' });
+      const idx = Math.min(Math.max(body.atIndex ?? data.entries.length, 0), data.entries.length);
+      data.entries.splice(idx, 0, entry);
+      await recordHistory(store, { key: 'balancing', before, description: `${user.name} restored (undo) Balancing entry for job ${entry.jobNumber || '(no #)'}`, userName: user.name, area: 'balancing' });
+      await saveBalancing(store, data);
+      return json(200, { entry });
     }
 
     return json(400, { error: 'Unknown action' });

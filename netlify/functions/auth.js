@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { getBlobStore } = require('./_store');
 const { USERS } = require('./roles');
+const { loadMatrix, getPerm, TAB_IDS } = require('./_permissions');
 
 // Simple opaque session token store, backed by Netlify Blobs so it survives
 // across function invocations (each request may hit a different instance).
@@ -45,6 +46,16 @@ exports.handler = async (event) => {
       createdAt: new Date().toISOString(),
     });
 
+    // Compute the live, admin-editable tab list — not the static roles.js
+    // default — so a permission change Jake made takes effect immediately,
+    // even for someone logging in for the first time since that change.
+    const isSuperAdmin = user.role === 'admin';
+    const permStore = getBlobStore('jobs');
+    const matrix = await loadMatrix(permStore);
+    const perms = {};
+    for (const tabId of TAB_IDS) perms[tabId] = getPerm(matrix, userId, tabId, isSuperAdmin);
+    const tabs = TAB_IDS.filter((id) => perms[id] !== 'unseen');
+
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -56,7 +67,8 @@ exports.handler = async (event) => {
         editsOwnSheet: user.editsOwnSheet,
         viewSheets: user.viewSheets,
         rottler: user.rottler,
-        tabs: user.tabs,
+        perms,
+        tabs,
       }),
     };
   } catch (err) {

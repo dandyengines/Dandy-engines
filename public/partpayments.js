@@ -1,6 +1,6 @@
 // ===== Part Payments — Jake/Mike/Mel =====
 
-let ppState = { jobs: [], totals: { cashHeld: 0, eftHeld: 0, visaInvoiced: 0 }, sortBy: 'person' };
+let ppState = { jobs: [], totals: { cashHeld: 0, eftHeld: 0, visaInvoiced: 0 }, sortBy: 'person', showCompleted: false };
 
 async function renderPartPaymentsTab() {
   const content = document.getElementById('content');
@@ -25,7 +25,7 @@ function jobBalance(job) {
 
 function paintPP() {
   const content = document.getElementById('content');
-  let jobs = [...ppState.jobs];
+  let jobs = ppState.showCompleted ? [...ppState.jobs] : ppState.jobs.filter((j) => !j.completed);
   if (ppState.sortBy === 'person') {
     jobs.sort((a, b) => a.personResponsible.localeCompare(b.personResponsible));
   } else {
@@ -45,6 +45,7 @@ function paintPP() {
           <div id="pp-jobnumber-suggestions" class="autocomplete-dropdown" hidden></div>
         </label>
         <label>Customer (if new job) <input type="text" id="pp-customer"></label>
+        <label>Engine (if new job) <input type="text" id="pp-engine"></label>
         <label>Person Responsible
           <select id="pp-person">
             <option value="jake">Jake</option><option value="mike">Mike</option>
@@ -66,6 +67,9 @@ function paintPP() {
         <button class="chip ${ppState.sortBy === 'person' ? 'chip-active' : ''}" data-ppsort="person">Sort: Person Responsible</button>
         <button class="chip ${ppState.sortBy === 'job' ? 'chip-active' : ''}" data-ppsort="job">Sort: Job #</button>
       </div>
+      <div class="toolbar-group">
+        <label class="chip-toggle"><input type="checkbox" id="pp-toggle-completed" ${ppState.showCompleted ? 'checked' : ''}> Show Completed</label>
+      </div>
     </div>
     <div id="pp-list" class="job-list">${jobs.map(ppRowHTML).join('') || '<p class="muted-sm">No payments logged yet.</p>'}</div>
   `;
@@ -73,6 +77,7 @@ function paintPP() {
   document.querySelectorAll('[data-ppsort]').forEach((btn) =>
     btn.addEventListener('click', () => { ppState.sortBy = btn.dataset.ppsort; paintPP(); })
   );
+  document.getElementById('pp-toggle-completed').addEventListener('change', (e) => { ppState.showCompleted = e.target.checked; paintPP(); });
   wirePPForm();
   wirePPRows();
 }
@@ -80,11 +85,11 @@ function paintPP() {
 function ppRowHTML(job) {
   const { paid, spent, balance } = jobBalance(job);
   return `
-  <div class="job-card" data-pp-job="${escapeHtml(job.jobNumber)}">
+  <div class="job-card" data-pp-job="${escapeHtml(job.jobNumber)}" style="${job.completed ? 'opacity:.6;' : ''}">
     <div class="job-card-row">
       <div class="job-card-main">
-        <div class="job-card-title"><strong>${escapeHtml(job.jobNumber)}</strong></div>
-        <div class="job-card-sub">Responsible: ${escapeHtml(job.personResponsible)}</div>
+        <div class="job-card-title"><strong>${escapeHtml(job.jobNumber)}</strong> ${escapeHtml(job.customer || '')} ${job.completed ? '<span class="muted-sm">(complete)</span>' : ''}</div>
+        <div class="job-card-sub">${escapeHtml(job.engine || '')}${job.engine ? ' · ' : ''}Responsible: ${escapeHtml(job.personResponsible)}</div>
       </div>
       <div class="job-card-meta">
         <span>Paid $${paid.toFixed(0)}</span>
@@ -113,6 +118,11 @@ function ppRowHTML(job) {
         <label>Payment Type <select class="pp-inv-type"><option value="cash">Cash</option><option value="eft" selected>EFT</option><option value="visa">Visa</option></select></label>
       </div>
       <button class="pp-inv-save" style="margin-top:8px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Add Invoice</button>
+      <div class="job-actions-row">
+        <button class="pp-edit-job">✎ Edit Job</button>
+        <button class="pp-complete-job">${job.completed ? '↺ Un-complete' : '✓ Complete'}</button>
+        <button class="pp-delete-job">🗑 Delete</button>
+      </div>
     </div>
   </div>`;
 }
@@ -147,6 +157,7 @@ function wirePPForm() {
             const s = suggestions[row.dataset.idx];
             jobNumberInput.value = s.jobNumber;
             document.getElementById('pp-customer').value = s.customer || '';
+            document.getElementById('pp-engine').value = s.engine || '';
             suggestionsBox.hidden = true;
           });
         });
@@ -164,6 +175,7 @@ function wirePPForm() {
       action: 'addPayment',
       jobNumber: jobNumberInput.value,
       customer: document.getElementById('pp-customer').value,
+      engine: document.getElementById('pp-engine').value,
       personResponsible: document.getElementById('pp-person').value,
       paymentType: document.getElementById('pp-type').value,
       amount: document.getElementById('pp-amount').value,
@@ -285,5 +297,88 @@ function wirePPRows() {
         });
       } catch (err) { alert("Couldn't delete invoice: " + err.message); }
     }));
+
+    card.querySelector('.pp-edit-job')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPPEditJobModal(jobNumber);
+    });
+
+    card.querySelector('.pp-complete-job')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const job = ppState.jobs.find((j) => j.jobNumber === jobNumber);
+      const newCompleted = !job.completed;
+      try {
+        const { job: updated, totals } = await api('/.netlify/functions/partpayments', {
+          method: 'POST', body: JSON.stringify({ action: 'setJobCompleted', jobNumber, completed: newCompleted }),
+        });
+        updateJobInState(updated);
+        ppState.totals = totals;
+        paintPP();
+        showUndoToast(newCompleted ? 'Job marked complete.' : 'Job marked not complete.', async () => {
+          const { job: reverted, totals: t2 } = await api('/.netlify/functions/partpayments', {
+            method: 'POST', body: JSON.stringify({ action: 'setJobCompleted', jobNumber, completed: !newCompleted }),
+          });
+          updateJobInState(reverted);
+          ppState.totals = t2;
+          paintPP();
+        });
+      } catch (err) { alert("Couldn't update: " + err.message); }
+    });
+
+    card.querySelector('.pp-delete-job')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Delete the whole Part Payments entry for job ${jobNumber}? This removes all its logged payments and invoices too. You can undo for a few seconds after.`)) return;
+      let removed, removedIndex, totals;
+      try {
+        ({ removed, removedIndex, totals } = await api('/.netlify/functions/partpayments', {
+          method: 'POST', body: JSON.stringify({ action: 'deleteJob', jobNumber }),
+        }));
+      } catch (err) { alert("Couldn't delete: " + err.message); return; }
+      ppState.jobs = ppState.jobs.filter((j) => j.jobNumber !== jobNumber);
+      ppState.totals = totals;
+      paintPP();
+      showUndoToast(`Deleted Part Payments job ${jobNumber}.`, async () => {
+        await api('/.netlify/functions/partpayments', { method: 'POST', body: JSON.stringify({ action: 'restoreJob', job: removed, atIndex: removedIndex }) });
+        await renderPartPaymentsTab();
+      });
+    });
+  });
+}
+
+function openPPEditJobModal(jobNumber) {
+  const job = ppState.jobs.find((j) => j.jobNumber === jobNumber);
+  if (!job) return;
+  const form = openModal(`
+    <h2>Edit Part Payments Job</h2>
+    <div class="detail-grid">
+      <label>Job # <input type="text" class="ppef-jobnumber" value="${escapeHtml(job.jobNumber)}"></label>
+      <label>Person Responsible
+        <select class="ppef-person">
+          ${['jake', 'mike', 'lou', 'sab', 'frank'].map((p) => `<option value="${p}" ${p === job.personResponsible ? 'selected' : ''}>${p[0].toUpperCase() + p.slice(1)}</option>`).join('')}
+        </select>
+      </label>
+    </div>
+    <p class="muted-sm" style="margin-top:8px;">Customer and engine come from the linked Builds/Machining job, so they're not edited here.</p>
+    <div style="margin-top:10px;display:flex;gap:8px;">
+      <button id="ppef-save" class="btn-primary">Save</button>
+      <button id="ppef-cancel">Cancel</button>
+    </div>
+  `);
+  document.getElementById('ppef-cancel').addEventListener('click', () => closeModal());
+  document.getElementById('ppef-save').addEventListener('click', async () => {
+    const patch = {
+      jobNumber: form.querySelector('.ppef-jobnumber').value,
+      personResponsible: form.querySelector('.ppef-person').value,
+    };
+    try {
+      const { job: updated, totals } = await api('/.netlify/functions/partpayments', {
+        method: 'POST', body: JSON.stringify({ action: 'updateJob', jobNumber, patch }),
+      });
+      ppState.jobs = ppState.jobs.filter((j) => j.jobNumber !== jobNumber);
+      ppState.jobs.push(updated);
+      ppState.totals = totals;
+      closeModal();
+      paintPP();
+    } catch (e) { alert("Couldn't save: " + e.message); }
   });
 }

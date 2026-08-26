@@ -6,7 +6,7 @@ const SHEET_IDS = ['lou', 'frank', 'sab', 'mike', 'jake', 'machining'];
 
 exports.handler = async (event) => {
   const session = await getSession(event);
-  if (!session || session.user.role !== 'admin') return json(403, { error: 'Forbidden' });
+  if (!session || !(session.user.isSuperAdmin || session.user.perms.settings === 'edit')) return json(403, { error: 'Forbidden' });
 
   const store = getBlobStore('jobs');
 

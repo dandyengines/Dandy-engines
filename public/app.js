@@ -14,6 +14,7 @@ const TAB_LABELS = {
   machining_sab: "🛠️ Sab's Machining",
   machining_mike: "🛠️ Mike's Machining",
   balancing: '⚖️ Balancing',
+  invoicesawaiting: '💳 Invoices Awaiting Payment',
   partpayments: '💰 Part Payments',
   settings: '⚙️ Settings',
   history: '🕘 History',
@@ -113,6 +114,13 @@ async function refreshAlertsIndicator() {
   btn.onclick = () => setActiveTab('settings');
 }
 
+function labelForTab(tabId) {
+  if (TAB_LABELS[tabId]) return TAB_LABELS[tabId];
+  if (tabId.startsWith('builds_')) return `🔧 ${(PERSON_NAMES[tabId.slice('builds_'.length)] || tabId)}'s Builds`;
+  if (tabId === 'machining' || tabId.startsWith('machining_')) return `🛠️ ${MACHINING_LABELS[tabId] || tabId}`;
+  return tabId;
+}
+
 function buildNav() {
   const sidebarTabs = document.getElementById('sidebar-tabs');
   const bottomNav = document.getElementById('bottom-nav');
@@ -121,24 +129,13 @@ function buildNav() {
   sidebarTabs.innerHTML = '';
   bottomNav.innerHTML = '';
 
-  // "myjobs" in session.tabs expands into one named tab per sheet the user
-  // can access (their own sheet first, then anyone in their viewSheets) —
-  // e.g. Jake sees "Jake's Builds", "Mike's Builds", "Frank's Builds", etc,
-  // all separately, instead of a single generic "My Jobs" tab.
-  const navEntries = [];
-  session.tabs.filter((t) => t !== 'history').forEach((tabId) => {
-    if (tabId === 'myjobs') {
-      const sheets = [session.personSheet, ...(session.viewSheets || [])].filter(Boolean);
-      const seen = new Set();
-      sheets.forEach((sheet) => {
-        if (seen.has(sheet)) return;
-        seen.add(sheet);
-        navEntries.push({ id: `builds_${sheet}`, label: `🔧 ${(PERSON_NAMES[sheet] || sheet)}'s Builds` });
-      });
-      return;
-    }
-    navEntries.push({ id: tabId, label: TAB_LABELS[tabId] || tabId });
-  });
+  // session.tabs now comes directly from the live, admin-editable permission
+  // matrix (see _permissions.js) — every entry (including builds_<person>
+  // and machining_<person>) is already the exact set this user can access,
+  // so there's no client-side expansion needed here anymore.
+  const navEntries = session.tabs
+    .filter((t) => t !== 'history') // History is reached from inside Settings, not the sidebar
+    .map((tabId) => ({ id: tabId, label: labelForTab(tabId) }));
 
   navEntries.forEach(({ id: tabId, label }) => {
     const sideBtn = document.createElement('button');
@@ -177,6 +174,10 @@ function renderTab(tabId) {
 
   if (tabId === 'home') {
     renderHomeTab();
+    return;
+  }
+  if (tabId === 'invoicesawaiting') {
+    renderInvoicesAwaitingTab();
     return;
   }
   if (tabId === 'settings') {
@@ -261,7 +262,12 @@ function renderSettings() {
         ${[3, 5, 10].map((s) => `<button class="chip undo-duration-btn ${undoDuration === s ? 'chip-active' : ''}" data-secs="${s}">${s}s</button>`).join('')}
       </div>
     </div>
-    ${session.role === 'admin' ? `
+    ${(session.role === 'admin' || session.perms?.settings === 'edit') ? `
+    <div class="stub-card" style="margin-top:14px;">
+      <h2>Manage Team Permissions</h2>
+      <p class="muted-sm">Set exactly what every person can see and edit, tab by tab. Changes apply immediately, next time they load that tab.</p>
+      <button id="open-permissions-btn" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Open Permissions</button>
+    </div>
     <div class="stub-card" style="margin-top:14px;">
       <h2>History</h2>
       <p class="muted-sm">Review and revert recent actions across every tab (last 60 days).</p>
@@ -319,6 +325,10 @@ function wireSettings() {
   document.getElementById('open-history-btn')?.addEventListener('click', () => {
     document.getElementById('page-title').textContent = 'History';
     renderHistoryTab();
+  });
+  document.getElementById('open-permissions-btn')?.addEventListener('click', () => {
+    document.getElementById('page-title').textContent = 'Manage Team Permissions';
+    renderPermissionsTab();
   });
   document.getElementById('import-legacy-btn')?.addEventListener('click', checkImportStatus);
   document.getElementById('cleanup-jobnums-btn')?.addEventListener('click', checkCleanupStatus);

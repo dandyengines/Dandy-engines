@@ -1,18 +1,15 @@
 const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 
-// Keep in sync with the same mapping/logic in jobs.js.
+// Keep in sync with the same mapping in jobs.js.
 const MACHINING_OWNERS = { machining: 'jake', machining_lou: 'lou', machining_sab: 'sab', machining_mike: 'mike' };
 function isMachiningSheet(sheet) { return sheet in MACHINING_OWNERS; }
+function tabIdForSheet(sheet) { return isMachiningSheet(sheet) ? sheet : `builds_${sheet}`; }
 
-function canEditSheet(user, sheet) {
-  if (isMachiningSheet(sheet)) return user.role === 'admin' || (user.editsOwnSheet && user.personSheet === MACHINING_OWNERS[sheet]);
-  return user.editsOwnSheet && user.personSheet === sheet;
-}
-function canViewSheet(user, sheet) {
-  if (isMachiningSheet(sheet)) return user.role === 'admin' || user.personSheet === MACHINING_OWNERS[sheet];
-  return user.personSheet === sheet || user.viewSheets.includes(sheet);
-}
+// Access control now flows through the live permission matrix (user.perms,
+// attached by getSession) — see _permissions.js.
+function canEditSheet(user, sheet) { return user.perms[tabIdForSheet(sheet)] === 'edit'; }
+function canViewSheet(user, sheet) { return user.perms[tabIdForSheet(sheet)] !== 'unseen'; }
 
 exports.handler = async (event) => {
   const session = await getSession(event);

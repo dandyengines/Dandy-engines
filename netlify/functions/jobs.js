@@ -3,6 +3,7 @@ const { getSession, json } = require('./_shared');
 const { recordHistory, clone } = require('./_history');
 const { notifyUser } = require('./_push');
 const { USERS } = require('./roles');
+const { loadMatrix, getPerm } = require('./_permissions');
 
 const SHEET_IDS = ['jake', 'mike', 'frank', 'sab', 'lou']; // the 5 actual job sheets
 
@@ -13,24 +14,32 @@ const MACHINING_OWNERS = { machining: 'jake', machining_lou: 'lou', machining_sa
 const MACHINING_SHEET_IDS = Object.keys(MACHINING_OWNERS);
 function isMachiningSheet(sheet) { return sheet in MACHINING_OWNERS; }
 
-function usersOnSheet(sheet, exceptUserId) {
-  return Object.entries(USERS)
-    .filter(([id, u]) => u.personSheet === sheet && id !== exceptUserId)
-    .map(([id]) => id);
-}
-function usersViewingSheet(sheet, exceptUserId) {
-  return Object.entries(USERS)
-    .filter(([id, u]) => (u.personSheet === sheet || u.viewSheets.includes(sheet)) && id !== exceptUserId)
-    .map(([id]) => id);
-}
+// Maps a "sheet" key (as used throughout this file) to the permission-matrix
+// tab id that governs it — Builds sheets are 'builds_<sheet>', Machining
+// sheets already ARE the tab id (e.g. 'machining_lou').
+function tabIdForSheet(sheet) { return isMachiningSheet(sheet) ? sheet : `builds_${sheet}`; }
 
-function canView(user, sheet) {
-  if (isMachiningSheet(sheet)) return user.role === 'admin' || user.personSheet === MACHINING_OWNERS[sheet];
-  return user.personSheet === sheet || user.viewSheets.includes(sheet);
+// Access control now flows entirely through the live permission matrix
+// (attached to `user.perms` by getSession) instead of the old hardcoded
+// personSheet/viewSheets/editsOwnSheet checks — see _permissions.js.
+function canView(user, sheet) { return user.perms[tabIdForSheet(sheet)] !== 'unseen'; }
+function canEdit(user, sheet) { return user.perms[tabIdForSheet(sheet)] === 'edit'; }
+
+// Notification targeting also goes through the live matrix now, so a
+// permission Jake grants someone takes effect for notifications too.
+async function usersOnSheet(store, sheet, exceptUserId) {
+  const matrix = await loadMatrix(store);
+  const tabId = tabIdForSheet(sheet);
+  return Object.entries(USERS)
+    .filter(([id, u]) => id !== exceptUserId && getPerm(matrix, id, tabId, u.role === 'admin') === 'edit')
+    .map(([id]) => id);
 }
-function canEdit(user, sheet) {
-  if (isMachiningSheet(sheet)) return user.role === 'admin' || (user.editsOwnSheet && user.personSheet === MACHINING_OWNERS[sheet]);
-  return user.editsOwnSheet && user.personSheet === sheet;
+async function usersViewingSheet(store, sheet, exceptUserId) {
+  const matrix = await loadMatrix(store);
+  const tabId = tabIdForSheet(sheet);
+  return Object.entries(USERS)
+    .filter(([id, u]) => id !== exceptUserId && getPerm(matrix, id, tabId, u.role === 'admin') !== 'unseen')
+    .map(([id]) => id);
 }
 
 async function loadSheet(store, sheet) {
@@ -157,13 +166,13 @@ exports.handler = async (event) => {
       // Notifications: own-sheet change (other people editing "your" sheet),
       // and urgent-flag (opt-in, everyone with view access).
       const pushStore = getBlobStore('jobs');
-      for (const uid of usersOnSheet(sheet, session.userId)) {
+      for (const uid of await usersOnSheet(pushStore, sheet, session.userId)) {
         notifyUser(pushStore, uid, 'ownSheetChange', {
           title: 'Dandy Engines', body: `${user.name} updated job ${job.jobNumber || '(no #)'} on your sheet.`,
         });
       }
       if (body.patch && body.patch.urgent === true) {
-        for (const uid of usersViewingSheet(sheet, session.userId)) {
+        for (const uid of await usersViewingSheet(pushStore, sheet, session.userId)) {
           notifyUser(pushStore, uid, 'urgentFlag', {
             title: '⚠ Urgent job', body: `Job ${job.jobNumber || '(no #)'} (${sheet}'s sheet) was flagged urgent.`,
           });

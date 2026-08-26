@@ -13,7 +13,10 @@ const LABELS = {
 };
 
 function canAccess(user) {
-  return user.tabs.includes('tunnelvision');
+  return user.perms.tunnelvision !== 'unseen';
+}
+function canEditTV(user) {
+  return user.perms.tunnelvision === 'edit';
 }
 
 function nowISO() { return new Date().toISOString(); }
@@ -39,16 +42,16 @@ exports.handler = async (event) => {
   if (!session || !canAccess(session.user)) return json(403, { error: 'Forbidden' });
 
   const store = getBlobStore('jobs'); // shares the "jobs" store, different key
-  const isAdmin = session.user.role === 'admin';
+  const canEditTVPerm = canEditTV(session.user);
 
   if (event.httpMethod === 'GET') {
     const data = await load(store);
     const ordered = data.order.map((id) => data.jobs.find((j) => j.id === id)).filter(Boolean);
-    return json(200, { jobs: ordered.map(withBadge), canEdit: isAdmin, statusOptions: { BLOCK_STATUSES, HEAD_STATUSES, RODS_STATUSES, CRANK_STATUSES, LABELS } });
+    return json(200, { jobs: ordered.map(withBadge), canEdit: canEditTVPerm, statusOptions: { BLOCK_STATUSES, HEAD_STATUSES, RODS_STATUSES, CRANK_STATUSES, LABELS } });
   }
 
   if (event.httpMethod === 'POST') {
-    if (!isAdmin) return json(403, { error: 'Forbidden' });
+    if (!canEditTVPerm) return json(403, { error: 'Forbidden' });
     let body;
     try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Bad request' }); }
 
@@ -131,6 +134,68 @@ exports.handler = async (event) => {
       await recordHistory(store, { key: 'tunnelvision', before, description: `${session.user.name} reordered Tunnel Vision`, userName: session.user.name, area: 'tunnelvision' });
       await save(store, data);
       return json(200, { order: data.order });
+    }
+
+    if (body.action === 'updateDetails') {
+      const before = clone(data);
+      const job = data.jobs.find((j) => j.id === body.jobId);
+      if (!job) return json(404, { error: 'Job not found' });
+      const patchable = ['tvNumber', 'customer', 'engine'];
+      for (const key of patchable) if (key in (body.patch || {})) job[key] = body.patch[key];
+      await recordHistory(store, { key: 'tunnelvision', before, description: `${session.user.name} edited TV job ${job.tvNumber || '(no #)'}`, userName: session.user.name, area: 'tunnelvision' });
+      await save(store, data);
+      return json(200, { job: withBadge(job) });
+    }
+
+    if (body.action === 'complete') {
+      // No separate "stage" field exists for TV jobs — completion is
+      // derived from every component being Complete — so marking a job
+      // Complete here forces every component to its Complete status.
+      const before = clone(data);
+      const job = data.jobs.find((j) => j.id === body.jobId);
+      if (!job) return json(404, { error: 'Job not found' });
+      const previousStatuses = { block: job.block.status, head: job.head.status, rods: job.rods.status, crank: job.crank.status };
+      job.block.status = 'complete'; job.head.status = 'complete'; job.rods.status = 'complete'; job.crank.status = 'complete';
+      job.notes.push({ text: 'Marked complete — all components set to Complete.', timestamp: nowISO(), author: session.user.name, auto: true });
+      await recordHistory(store, { key: 'tunnelvision', before, description: `${session.user.name} marked TV job ${job.tvNumber || '(no #)'} complete`, userName: session.user.name, area: 'tunnelvision' });
+      await save(store, data);
+      return json(200, { job: withBadge(job), previousStatuses });
+    }
+
+    if (body.action === 'setComponents') {
+      // Powers the Undo after "complete" — restores each component to its
+      // exact previous status in one call.
+      const before = clone(data);
+      const job = data.jobs.find((j) => j.id === body.jobId);
+      if (!job) return json(404, { error: 'Job not found' });
+      const statuses = body.statuses || {};
+      for (const comp of ['block', 'head', 'rods', 'crank']) if (comp in statuses) job[comp].status = statuses[comp];
+      await recordHistory(store, { key: 'tunnelvision', before, description: `${session.user.name} restored component statuses on TV job ${job.tvNumber || '(no #)'} (undo)`, userName: session.user.name, area: 'tunnelvision' });
+      await save(store, data);
+      return json(200, { job: withBadge(job) });
+    }
+
+    if (body.action === 'delete') {
+      const before = clone(data);
+      const idx = data.jobs.findIndex((j) => j.id === body.jobId);
+      if (idx === -1) return json(404, { error: 'Job not found' });
+      const [removed] = data.jobs.splice(idx, 1);
+      data.order = data.order.filter((id) => id !== body.jobId);
+      await recordHistory(store, { key: 'tunnelvision', before, description: `${session.user.name} deleted TV job ${removed.tvNumber || '(no #)'}`, userName: session.user.name, area: 'tunnelvision' });
+      await save(store, data);
+      return json(200, { removed, removedIndex: idx });
+    }
+
+    if (body.action === 'restore') {
+      const before = clone(data);
+      const job = body.job;
+      if (!job || !job.id) return json(400, { error: 'job required' });
+      const idx = Math.min(Math.max(body.atIndex ?? data.jobs.length, 0), data.jobs.length);
+      data.jobs.splice(idx, 0, job);
+      if (!data.order.includes(job.id)) data.order.push(job.id);
+      await recordHistory(store, { key: 'tunnelvision', before, description: `${session.user.name} restored (undo) TV job ${job.tvNumber || '(no #)'}`, userName: session.user.name, area: 'tunnelvision' });
+      await save(store, data);
+      return json(200, { job: withBadge(job) });
     }
 
     return json(400, { error: 'Unknown action' });

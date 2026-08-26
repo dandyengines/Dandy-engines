@@ -7,12 +7,8 @@ const { getSession, json } = require('./_shared');
 const BUILD_SHEET_IDS = ['jake', 'mike', 'frank', 'sab', 'lou'];
 const MACHINING_OWNERS = { machining: 'jake', machining_lou: 'lou', machining_sab: 'sab', machining_mike: 'mike' };
 
-function canViewBuild(user, sheet) {
-  return user.personSheet === sheet || (user.viewSheets || []).includes(sheet);
-}
-function canViewMachining(user, sheet) {
-  return user.role === 'admin' || user.personSheet === MACHINING_OWNERS[sheet];
-}
+function canViewBuild(user, sheet) { return user.perms[`builds_${sheet}`] !== 'unseen'; }
+function canViewMachining(user, sheet) { return user.perms[sheet] !== 'unseen'; }
 
 async function loadSheet(store, key) {
   const data = await store.get(`sheet:${key}`, { type: 'json' });
@@ -66,7 +62,7 @@ exports.handler = async (event) => {
   }
 
   // Rottler
-  if (user.rottler) {
+  if (user.perms.rottler !== 'unseen') {
     const rottler = await store.get('rottler', { type: 'json' });
     for (const e of (rottler?.entries || [])) {
       if (matches(q, e.jobNumber, e.customer, e.engine)) {

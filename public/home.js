@@ -1,6 +1,4 @@
 // ===== Home dashboard =====
-// Personal "what's on my plate" scope, plus shop-wide tiles that are
-// visible more broadly (per dashboard.js access rules).
 
 function tileHTML(label, value, tabId) {
   return `
@@ -10,10 +8,10 @@ function tileHTML(label, value, tabId) {
     </button>`;
 }
 
-function dashJobRowHTML(job, tabId) {
+function dashJobRowHTML(job) {
   const dueText = job.expectedFinish ? `Due ${job.expectedFinish}` : '';
   return `
-    <button class="dash-list-row" data-tab="${tabId}">
+    <button class="dash-list-row" data-tab="${job.tabId}">
       <strong>${job.jobNumber || '—'}</strong> ${escapeHtml(job.customer || '')}
       <span class="muted-sm">${escapeHtml(dueText)}</span>
     </button>`;
@@ -35,19 +33,19 @@ async function renderHomeTab() {
   const personalSection = p ? `
     <h2 class="dash-section-title">What's on your plate</h2>
     <div class="dash-tiles">
-      ${tileHTML('Active Jobs', p.activeCount, p.homeTab)}
-      ${tileHTML('Urgent', p.urgentCount, p.homeTab)}
-      ${tileHTML('Overdue', p.overdueCount, p.homeTab)}
-      ${tileHTML('On Hold', p.onHoldCount, p.homeTab)}
+      ${tileHTML('Active Builds', p.activeBuildsCount, p.buildsTab)}
+      ${p.machiningTab !== null ? tileHTML('Active Machining', p.activeMachiningCount, p.machiningTab) : ''}
+      ${tileHTML('Urgent', p.urgentCount, p.buildsTab)}
+      ${tileHTML('Overdue', p.overdueCount, p.buildsTab)}
     </div>
     <div class="dash-columns">
       <div>
         <h3 class="dash-list-title">Approaching Deadlines</h3>
-        <div class="dash-list">${p.approachingDeadlines.map((j) => dashJobRowHTML(j, p.homeTab)).join('') || '<p class="muted-sm">Nothing due soon.</p>'}</div>
+        <div class="dash-list">${p.approachingDeadlines.map(dashJobRowHTML).join('') || '<p class="muted-sm">Nothing due soon.</p>'}</div>
       </div>
       <div>
         <h3 class="dash-list-title">Urgent Jobs</h3>
-        <div class="dash-list">${p.urgentJobs.map((j) => dashJobRowHTML(j, p.homeTab)).join('') || '<p class="muted-sm">No urgent jobs.</p>'}</div>
+        <div class="dash-list">${p.urgentJobs.map(dashJobRowHTML).join('') || '<p class="muted-sm">No urgent jobs.</p>'}</div>
       </div>
     </div>
   ` : '';
@@ -56,7 +54,7 @@ async function renderHomeTab() {
     ? tileHTML(
         data.invoicesAwaitingPayment.scope === 'shopwide' ? 'Invoices Awaiting Payment (shop-wide)' : 'Invoices Awaiting Payment',
         data.invoicesAwaitingPayment.count,
-        navTabIds.includes('partpayments') ? 'partpayments' : null
+        'invoicesawaiting'
       )
     : '';
 
@@ -73,5 +71,29 @@ async function renderHomeTab() {
   document.querySelectorAll('.dash-tile[data-tab], .dash-list-row[data-tab]').forEach((btn) => {
     if (!btn.dataset.tab) return;
     btn.addEventListener('click', () => setActiveTab(btn.dataset.tab));
+  });
+}
+
+// ===== Invoices Awaiting Payment — dedicated list, reached from the tile =====
+async function renderInvoicesAwaitingTab() {
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="stub-card">Loading…</div>`;
+  let data;
+  try {
+    data = await api('/.netlify/functions/dashboard?action=awaitingpayment');
+  } catch (e) {
+    content.innerHTML = `<div class="stub-card">Couldn't load: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  content.innerHTML = `
+    <h2 class="section-title">Invoices Awaiting Payment ${data.scope === 'shopwide' ? '(shop-wide)' : ''}</h2>
+    <div class="job-list">
+      ${data.jobs.map((j) => jobCardHTML(j, { editable: false, sheet: j.tabId })).join('') || '<p class="muted-sm">Nothing awaiting payment.</p>'}
+    </div>
+  `;
+  document.querySelectorAll('#content .job-card').forEach((card, i) => {
+    const job = data.jobs[i];
+    if (!job) return;
+    card.querySelector('.job-card-row').addEventListener('click', () => setActiveTab(job.tabId));
   });
 }
