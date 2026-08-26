@@ -1,4 +1,4 @@
-const { getStore } = require('@netlify/blobs');
+const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 const { CATEGORIES, VAPID_PUBLIC } = require('./_push');
 
@@ -14,7 +14,7 @@ exports.handler = async (event) => {
   const session = await getSession(event);
   if (!session) return json(401, { error: 'Not logged in' });
 
-  const store = getStore('jobs');
+  const store = getBlobStore('jobs');
 
   if (event.httpMethod === 'GET') {
     // Public VAPID key + this user's current prefs, so Settings can render

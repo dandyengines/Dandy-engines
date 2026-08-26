@@ -1,4 +1,4 @@
-const { getStore } = require('@netlify/blobs');
+const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 const { recordHistory, clone } = require('./_history');
 const { notifyUser } = require('./_push');
@@ -43,7 +43,7 @@ exports.handler = async (event) => {
   if (!session) return json(401, { error: 'Not logged in' });
   const { user } = session;
 
-  const store = getStore('jobs');
+  const store = getBlobStore('jobs');
   const params = event.queryStringParameters || {};
 
   // ---------- GET: read ----------
@@ -127,7 +127,7 @@ exports.handler = async (event) => {
 
       // Notifications: own-sheet change (other people editing "your" sheet),
       // and urgent-flag (opt-in, everyone with view access).
-      const pushStore = getStore('jobs');
+      const pushStore = getBlobStore('jobs');
       for (const uid of usersOnSheet(sheet, session.userId)) {
         notifyUser(pushStore, uid, 'ownSheetChange', {
           title: 'Dandy Engines', body: `${user.name} updated job ${job.jobNumber || '(no #)'} on your sheet.`,

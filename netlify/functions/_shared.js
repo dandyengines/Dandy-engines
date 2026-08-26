@@ -1,4 +1,4 @@
-const { getStore } = require('@netlify/blobs');
+const { getBlobStore } = require('./_store');
 const { USERS } = require('./roles');
 
 // Reads the Bearer token from the request, looks it up in the sessions
@@ -8,7 +8,7 @@ async function getSession(event) {
   if (!header || !header.startsWith('Bearer ')) return null;
   const token = header.slice(7);
 
-  const sessions = getStore('sessions');
+  const sessions = getBlobStore('sessions');
   const record = await sessions.get(token, { type: 'json' });
   if (!record || !USERS[record.userId]) return null;
 

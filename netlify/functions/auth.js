@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { getStore } = require('@netlify/blobs');
+const { getBlobStore } = require('./_store');
 const { USERS } = require('./roles');
 
 // Simple opaque session token store, backed by Netlify Blobs so it survives
@@ -38,7 +38,7 @@ exports.handler = async (event) => {
   const [userId, user] = match;
 
   try {
-    const sessions = getStore('sessions');
+    const sessions = getBlobStore('sessions');
     const token = makeToken();
     await sessions.setJSON(token, {
       userId,

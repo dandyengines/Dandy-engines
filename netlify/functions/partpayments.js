@@ -1,4 +1,4 @@
-const { getStore } = require('@netlify/blobs');
+const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 const { recordHistory, clone } = require('./_history');
 const { notifyUser } = require('./_push');
@@ -35,7 +35,7 @@ exports.handler = async (event) => {
   if (!session || !canAccess(session.user)) return json(403, { error: 'Forbidden' });
   const { user } = session;
 
-  const store = getStore('jobs'); // shared store, separate key
+  const store = getBlobStore('jobs'); // shared store, separate key
 
   if (event.httpMethod === 'GET') {
     const data = await loadPP(store);

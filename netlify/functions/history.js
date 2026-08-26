@@ -1,4 +1,4 @@
-const { getStore } = require('@netlify/blobs');
+const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 const { listHistory, revertHistory } = require('./_history');
 
@@ -6,7 +6,7 @@ exports.handler = async (event) => {
   const session = await getSession(event);
   if (!session || session.user.role !== 'admin') return json(403, { error: 'Forbidden' });
 
-  const store = getStore('jobs'); // shared store, 'history' key
+  const store = getBlobStore('jobs'); // shared store, 'history' key
 
   if (event.httpMethod === 'GET') {
     const entries = await listHistory(store);

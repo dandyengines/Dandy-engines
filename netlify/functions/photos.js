@@ -1,4 +1,4 @@
-const { getStore } = require('@netlify/blobs');
+const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 
 function canEditSheet(user, sheet) {
@@ -15,8 +15,8 @@ exports.handler = async (event) => {
   if (!session) return json(401, { error: 'Not logged in' });
   const { user } = session;
 
-  const jobsStore = getStore('jobs');
-  const photosStore = getStore('photos');
+  const jobsStore = getBlobStore('jobs');
+  const photosStore = getBlobStore('photos');
   const params = event.queryStringParameters || {};
 
   if (event.httpMethod === 'GET') {

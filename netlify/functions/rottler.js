@@ -1,4 +1,4 @@
-const { getStore } = require('@netlify/blobs');
+const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 const { recordHistory, clone } = require('./_history');
 const { notifyUser } = require('./_push');
@@ -31,7 +31,7 @@ exports.handler = async (event) => {
   const { user } = session;
   if (!canView(user)) return json(403, { error: 'Forbidden' });
 
-  const store = getStore('jobs'); // shared store, separate keys
+  const store = getBlobStore('jobs'); // shared store, separate keys
   const params = event.queryStringParameters || {};
 
   if (event.httpMethod === 'GET') {
@@ -66,7 +66,7 @@ exports.handler = async (event) => {
     let body;
     try { body = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Bad request' }); }
 
-    const rStore = getStore('jobs');
+    const rStore = getBlobStore('jobs');
     const data = await loadRottler(rStore);
 
     if (body.action === 'create' || body.action === 'redo') {

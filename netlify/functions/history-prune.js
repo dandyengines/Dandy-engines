@@ -1,8 +1,8 @@
-const { getStore } = require('@netlify/blobs');
+const { getBlobStore } = require('./_store');
 const { pruneOld } = require('./_history');
 
 exports.handler = async () => {
-  const store = getStore('jobs');
+  const store = getBlobStore('jobs');
   const data = await store.get('history', { type: 'json' });
   if (!data) return { statusCode: 200, body: 'Nothing to prune' };
 
