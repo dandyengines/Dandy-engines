@@ -1,0 +1,10 @@
+{
+  "name": "dandy-engines",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dandy Engines — workshop job flow & priority system",
+  "dependencies": {
+    "@netlify/blobs": "^7.0.0",
+    "web-push": "^3.6.7"
+  }
+}

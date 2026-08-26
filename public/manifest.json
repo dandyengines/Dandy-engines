@@ -1,0 +1,11 @@
+{
+  "name": "Dandy Engines",
+  "short_name": "Dandy",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0C0D0F",
+  "theme_color": "#0C0D0F",
+  "icons": [
+    { "src": "/logo.webp", "sizes": "512x512", "type": "image/webp" }
+  ]
+}

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dandy Engines</title>
+<meta name="theme-color" content="#0C0D0F">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/logo.webp">
+<link rel="apple-touch-icon" href="/logo.webp">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <img src="/logo.webp" alt="Dandy Engines" class="login-logo">
+    <p class="login-tag">Workshop Job Flow &amp; Priority System</p>
+    <form id="login-form" autocomplete="off">
+      <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" autofocus>
+      <button type="submit">Enter</button>
+    </form>
+    <p id="login-error" class="login-error" hidden></p>
+  </div>
+</div>
+
+<!-- ===== APP SHELL (hidden until logged in) ===== -->
+<div id="app" class="app" hidden>
+
+  <!-- Desktop/tablet sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <img src="/logo.webp" alt="Dandy Engines" class="sidebar-logo">
+    </div>
+    <div class="sidebar-tabs" id="sidebar-tabs"></div>
+    <div class="sidebar-user" id="sidebar-user"></div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="main">
+    <header class="topbar">
+      <button id="search-btn" class="icon-btn" aria-label="Search">🔍</button>
+      <h1 id="page-title">Home</h1>
+      <button id="settings-shortcut" class="icon-btn" aria-label="Settings">⚙️</button>
+    </header>
+
+    <div id="content" class="content">
+      <!-- Stage 1: placeholder screens per tab. Real tab content arrives in later stages. -->
+    </div>
+  </main>
+
+  <!-- Phone bottom tab bar -->
+  <nav class="bottom-nav" id="bottom-nav"></nav>
+</div>
+
+<script src="/jobs.js"></script>
+<script src="/myjobs.js"></script>
+<script src="/alljobs.js"></script>
+<script src="/tunnelvision.js"></script>
+<script src="/rottler.js"></script>
+<script src="/partpayments.js"></script>
+<script src="/history.js"></script>
+<script src="/machining.js"></script>
+<script src="/alerts.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
