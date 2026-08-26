@@ -1,6 +1,6 @@
 // Bump this on every release so installed phones fetch the new shell
 // instead of serving a stale cached version forever.
-const CACHE = 'dandy-engines-v6';
+const CACHE = 'dandy-engines-v7';
 const SHELL = ['/', '/styles.css', '/app.js', '/jobs.js', '/myjobs.js', '/alljobs.js', '/tunnelvision.js', '/rottler.js', '/partpayments.js', '/history.js', '/machining.js', '/alerts.js', '/manifest.json', '/logo.webp'];
 
 self.addEventListener('install', (event) => {
