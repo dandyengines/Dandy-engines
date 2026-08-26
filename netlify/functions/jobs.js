@@ -6,6 +6,13 @@ const { USERS } = require('./roles');
 
 const SHEET_IDS = ['jake', 'mike', 'frank', 'sab', 'lou']; // the 5 actual job sheets
 
+// Machining sheets: one private sheet per person, visible only to that
+// person + the admin. 'machining' is Jake's own (unchanged storage key
+// from the original single-sheet build); the rest are 'machining_<person>'.
+const MACHINING_OWNERS = { machining: 'jake', machining_lou: 'lou', machining_sab: 'sab', machining_mike: 'mike' };
+const MACHINING_SHEET_IDS = Object.keys(MACHINING_OWNERS);
+function isMachiningSheet(sheet) { return sheet in MACHINING_OWNERS; }
+
 function usersOnSheet(sheet, exceptUserId) {
   return Object.entries(USERS)
     .filter(([id, u]) => u.personSheet === sheet && id !== exceptUserId)
@@ -18,11 +25,11 @@ function usersViewingSheet(sheet, exceptUserId) {
 }
 
 function canView(user, sheet) {
-  if (sheet === 'machining') return user.role === 'admin';
+  if (isMachiningSheet(sheet)) return user.role === 'admin' || user.personSheet === MACHINING_OWNERS[sheet];
   return user.personSheet === sheet || user.viewSheets.includes(sheet);
 }
 function canEdit(user, sheet) {
-  if (sheet === 'machining') return user.role === 'admin';
+  if (isMachiningSheet(sheet)) return user.role === 'admin' || (user.editsOwnSheet && user.personSheet === MACHINING_OWNERS[sheet]);
   return user.editsOwnSheet && user.personSheet === sheet;
 }
 
@@ -65,6 +72,25 @@ exports.handler = async (event) => {
       return json(200, result);
     }
 
+    if (params.action === 'allmachining') {
+      // Same viewer list as All Builds (whoever can see alljobs sees this
+      // too), but sourced from each person's Machining sheet instead.
+      // Individual named Machining tabs stay locked to that person + admin;
+      // this rollup is intentionally broader, mirroring All Builds exactly.
+      if (!user.tabs.includes('allmachining')) return json(403, { error: 'Forbidden' });
+      const result = {};
+      for (const machSheet of MACHINING_SHEET_IDS) {
+        const owner = MACHINING_OWNERS[machSheet];
+        const data = await loadSheet(store, machSheet);
+        const ordered = data.order
+          .map((id) => data.jobs.find((j) => j.id === id))
+          .filter(Boolean);
+        const missing = data.jobs.filter((j) => !data.order.includes(j.id));
+        result[owner] = [...ordered, ...missing].map((j) => ({ ...j, sheet: machSheet }));
+      }
+      return json(200, result);
+    }
+
     if (params.action === 'sheet') {
       const sheet = params.sheet;
       if (!sheet || !canView(user, sheet)) return json(403, { error: 'Forbidden' });
@@ -94,12 +120,14 @@ exports.handler = async (event) => {
         id: 'j_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         jobNumber: body.jobNumber || '',
         customer: body.customer || '',
+        customerPhone: body.customerPhone || '',
         engine: body.engine || '',
         stage: body.stage || 'notstarted',
         urgent: false,
         expectedFinish: body.expectedFinish || null,
+        invoiceNumber: '',
         dateAdded: nowISO(),
-        personResponsible: sheet,
+        personResponsible: isMachiningSheet(sheet) ? MACHINING_OWNERS[sheet] : sheet,
         notes: body.notes ? [{ text: body.notes, timestamp: nowISO(), author: user.name }] : [],
         photos: [],
       };
@@ -117,8 +145,9 @@ exports.handler = async (event) => {
       const job = data.jobs.find((j) => j.id === body.jobId);
       if (!job) return json(404, { error: 'Job not found' });
 
-      // allowed fields to patch directly
-      const patchable = ['jobNumber', 'customer', 'engine', 'stage', 'urgent', 'expectedFinish'];
+      // allowed fields to patch directly — core fields (job#/customer/engine)
+      // are now editable post-creation, alongside stage/urgent/finish/etc.
+      const patchable = ['jobNumber', 'customer', 'customerPhone', 'engine', 'stage', 'urgent', 'expectedFinish', 'invoiceNumber'];
       for (const key of patchable) {
         if (key in (body.patch || {})) job[key] = body.patch[key];
       }
@@ -141,6 +170,35 @@ exports.handler = async (event) => {
         }
       }
 
+      return json(200, { job });
+    }
+
+    if (action === 'delete') {
+      if (!canEdit(user, sheet)) return json(403, { error: 'Forbidden' });
+      const data = await loadSheet(store, sheet);
+      const before = clone(data);
+      const idx = data.jobs.findIndex((j) => j.id === body.jobId);
+      if (idx === -1) return json(404, { error: 'Job not found' });
+      const [removed] = data.jobs.splice(idx, 1);
+      data.order = data.order.filter((id) => id !== body.jobId);
+      await recordHistory(store, { key: `sheet:${sheet}`, before, description: `${user.name} deleted job ${removed.jobNumber || '(no #)'} from ${sheet}'s sheet`, userName: user.name, area: 'myjobs' });
+      await saveSheet(store, sheet, data);
+      return json(200, { deletedJob: removed, deletedIndex: idx });
+    }
+
+    if (action === 'restore') {
+      // Powers the Undo toast after a delete — reinserts the exact job
+      // object at its original position.
+      if (!canEdit(user, sheet)) return json(403, { error: 'Forbidden' });
+      const data = await loadSheet(store, sheet);
+      const before = clone(data);
+      const job = body.job;
+      if (!job || !job.id) return json(400, { error: 'job required' });
+      const idx = Math.min(Math.max(body.atIndex ?? data.jobs.length, 0), data.jobs.length);
+      data.jobs.splice(idx, 0, job);
+      if (!data.order.includes(job.id)) data.order.push(job.id);
+      await recordHistory(store, { key: `sheet:${sheet}`, before, description: `${user.name} restored (undo) job ${job.jobNumber || '(no #)'} on ${sheet}'s sheet`, userName: user.name, area: 'myjobs' });
+      await saveSheet(store, sheet, data);
       return json(200, { job });
     }
 

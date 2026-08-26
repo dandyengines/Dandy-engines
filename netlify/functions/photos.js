@@ -1,12 +1,16 @@
 const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 
+// Keep in sync with the same mapping/logic in jobs.js.
+const MACHINING_OWNERS = { machining: 'jake', machining_lou: 'lou', machining_sab: 'sab', machining_mike: 'mike' };
+function isMachiningSheet(sheet) { return sheet in MACHINING_OWNERS; }
+
 function canEditSheet(user, sheet) {
-  if (sheet === 'machining') return user.role === 'admin';
+  if (isMachiningSheet(sheet)) return user.role === 'admin' || (user.editsOwnSheet && user.personSheet === MACHINING_OWNERS[sheet]);
   return user.editsOwnSheet && user.personSheet === sheet;
 }
 function canViewSheet(user, sheet) {
-  if (sheet === 'machining') return user.role === 'admin';
+  if (isMachiningSheet(sheet)) return user.role === 'admin' || user.personSheet === MACHINING_OWNERS[sheet];
   return user.personSheet === sheet || user.viewSheets.includes(sheet);
 }
 

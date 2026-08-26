@@ -62,6 +62,7 @@ button, input{font-family:inherit;}
 button{cursor:pointer;}
 
 /* ===================== LOGIN SCREEN ===================== */
+[hidden]{display:none !important;}
 .login-screen{
   min-height:100vh;
   display:flex;align-items:center;justify-content:center;
@@ -163,11 +164,125 @@ button{cursor:pointer;}
   color:var(--muted);
   padding:6px;
 }
+.topbar-user-info{
+  display:flex;align-items:center;gap:8px;
+}
+.topbar-user{
+  font-size:12px;color:var(--muted);white-space:nowrap;
+}
 .content{
   flex:1;
   padding:18px;
   padding-bottom:calc(90px + env(safe-area-inset-bottom)); /* room for bottom nav on phone */
 }
+
+/* --- Master search popup --- */
+.search-overlay{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,.55);
+  display:flex;align-items:flex-start;justify-content:center;
+  padding-top:12vh;
+  z-index:200;
+}
+.search-bubble{
+  width:min(560px, 92vw);
+  max-height:70vh;
+  background:var(--panel-raised);
+  border:1px solid var(--hairline);
+  border-radius:14px;
+  padding:14px;
+  display:flex;flex-direction:column;gap:10px;
+  position:relative;
+}
+#search-bubble-input{
+  width:100%;padding:12px 40px 12px 14px;
+  border-radius:10px;border:1px solid var(--hairline);
+  background:var(--panel);color:var(--text);
+  font-size:16px;
+}
+#search-bubble-close{
+  position:absolute;top:16px;right:16px;
+}
+.search-bubble-results{
+  overflow-y:auto;
+  display:flex;flex-direction:column;gap:4px;
+}
+.search-result-row{
+  text-align:left;
+  padding:10px 12px;
+  border-radius:8px;border:none;
+  background:transparent;color:var(--text);
+  font-size:14px;
+  cursor:pointer;
+}
+.search-result-row:hover{background:var(--panel);}
+
+/* --- Generic modal (New Job popups) --- */
+.modal-card{
+  width:min(560px, 92vw);
+  max-height:85vh;
+  overflow-y:auto;
+  background:var(--panel-raised);
+  border:1px solid var(--hairline);
+  border-radius:14px;
+  padding:18px;
+}
+
+/* --- Undo toast --- */
+.undo-toast{
+  position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);
+  background:var(--panel-raised);border:1px solid var(--hairline);
+  border-radius:10px;padding:10px 14px;
+  display:flex;align-items:center;gap:12px;
+  z-index:300;
+  box-shadow:0 4px 16px rgba(0,0,0,.35);
+}
+.undo-toast #undo-toast-btn{padding:6px 12px;font-size:13px;}
+
+.job-actions-row{
+  display:flex;gap:10px;margin-top:14px;
+}
+.job-actions-row button{
+  padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);
+  background:var(--panel);color:var(--text);cursor:pointer;
+}
+.job-actions-row .btn-delete{color:var(--de-red);border-color:var(--de-red);}
+
+/* --- Home dashboard --- */
+.dash-section-title{
+  font-family:var(--heading-font);
+  font-size:16px;letter-spacing:.02em;text-transform:uppercase;
+  margin:18px 0 10px;color:var(--muted);
+}
+.dash-section-title:first-child{margin-top:0;}
+.dash-tiles{
+  display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+  gap:10px;margin-bottom:16px;
+}
+.dash-tile{
+  background:var(--panel-raised);border:1px solid var(--hairline);border-radius:12px;
+  padding:14px;text-align:left;color:var(--text);cursor:pointer;
+}
+.dash-tile:disabled{cursor:default;opacity:.7;}
+.dash-tile-value{font-size:26px;font-weight:700;}
+.dash-tile-label{font-size:12px;color:var(--muted);margin-top:4px;}
+.dash-columns{
+  display:grid;grid-template-columns:1fr 1fr;gap:16px;
+}
+@media (max-width:640px){.dash-columns{grid-template-columns:1fr;}}
+.dash-list-title{
+  font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.02em;
+  margin-bottom:8px;
+}
+.dash-list{display:flex;flex-direction:column;gap:6px;}
+.dash-list-row{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  text-align:left;padding:10px 12px;border-radius:8px;
+  border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);
+  font-size:13px;cursor:pointer;
+}
+.dash-list-row:hover{background:var(--panel);}
 
 /* --- Bottom tab bar (phone) --- */
 .bottom-nav{
@@ -257,6 +372,9 @@ button{cursor:pointer;}
   border-radius:var(--radius);overflow:hidden;
 }
 .job-card.dragging{opacity:.5;border-color:var(--de-red);}
+/* While any card is being dragged, kill text selection app-wide so a mouse
+   drag never highlights/"copies" surrounding text — this was the desktop bug. */
+body.is-dragging{user-select:none;-webkit-user-select:none;}
 .job-card-row{
   display:flex;align-items:center;gap:10px;
   padding:14px;cursor:pointer;
@@ -264,6 +382,7 @@ button{cursor:pointer;}
 .drag-handle{
   cursor:grab;color:var(--muted);font-size:18px;
   touch-action:none;padding:4px;
+  -webkit-user-select:none;user-select:none;
 }
 .job-card-main{flex:1;min-width:0;}
 .job-card-title{font-size:14px;}
@@ -342,6 +461,34 @@ button{cursor:pointer;}
   background:var(--bg);border:1px solid var(--hairline);border-radius:8px;
   color:var(--text);padding:7px 10px;font-size:12px;
 }
+/* Rottler toggle rows (Torque Plate, Race Hone) — unlike .tv-comp-row, the
+   value box must sit right next to the toggle, not pushed to the far edge. */
+.rottler-toggle-row{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+
+/* --- Live autocomplete dropdown (Rottler/Balancing/Part Payments job #) --- */
+.autocomplete-dropdown{
+  position:absolute;top:100%;left:0;right:0;z-index:20;
+  background:var(--panel-raised);border:1px solid var(--hairline);border-radius:8px;
+  max-height:220px;overflow-y:auto;
+  margin-top:2px;
+  box-shadow:0 4px 12px rgba(0,0,0,.3);
+}
+.autocomplete-row{
+  display:block;width:100%;text-align:left;
+  padding:8px 10px;border:none;background:none;color:var(--text);
+  font-size:12px;cursor:pointer;
+}
+.autocomplete-row:hover{background:var(--panel);}
+
+.pp-line{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.pp-line-actions{display:flex;gap:6px;flex-shrink:0;}
+.pp-line-actions button{
+  font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--hairline);
+  background:var(--panel);color:var(--muted);cursor:pointer;
+}
+.pp-line-actions button:hover{color:var(--text);}
 .tv-badge-grey{background:var(--stage-notstarted);color:#fff;}
 .tv-badge-blue{background:var(--stage-blue);color:#fff;}
 .tv-badge-red{background:var(--de-red);color:#fff;}

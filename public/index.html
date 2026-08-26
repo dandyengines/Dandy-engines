@@ -42,6 +42,10 @@
     <header class="topbar">
       <button id="search-btn" class="icon-btn" aria-label="Search">🔍</button>
       <h1 id="page-title">Home</h1>
+      <div class="topbar-user-info">
+        <span id="topbar-user" class="topbar-user"></span>
+        <button id="alerts-indicator" class="icon-btn" aria-label="Alerts status" title="Alerts">🔕</button>
+      </div>
       <button id="settings-shortcut" class="icon-btn" aria-label="Settings">⚙️</button>
     </header>
 
@@ -52,17 +56,43 @@
 
   <!-- Phone bottom tab bar -->
   <nav class="bottom-nav" id="bottom-nav"></nav>
+
+  <!-- Master search popup (hidden until opened) -->
+  <div id="search-overlay" class="search-overlay" hidden>
+    <div class="search-bubble">
+      <input type="text" id="search-bubble-input" placeholder="Search everything…" autocomplete="off">
+      <button id="search-bubble-close" class="icon-btn" aria-label="Close search">✕</button>
+      <div id="search-bubble-results" class="search-bubble-results"></div>
+    </div>
+  </div>
+
+  <!-- Generic modal (used for New Job / New Machining Job popups) -->
+  <div id="modal-overlay" class="search-overlay" hidden>
+    <div class="modal-card" id="modal-card"></div>
+  </div>
+
+  <!-- App-wide Undo toast -->
+  <div id="undo-toast" class="undo-toast" hidden>
+    <span id="undo-toast-msg"></span>
+    <button id="undo-toast-btn" class="btn-primary">Undo</button>
+  </div>
 </div>
 
 <script src="/jobs.js"></script>
+<script src="/modal.js"></script>
+<script src="/undo.js"></script>
+<script src="/home.js"></script>
 <script src="/myjobs.js"></script>
 <script src="/alljobs.js"></script>
+<script src="/allmachining.js"></script>
 <script src="/tunnelvision.js"></script>
 <script src="/rottler.js"></script>
+<script src="/balancing.js"></script>
 <script src="/partpayments.js"></script>
 <script src="/history.js"></script>
 <script src="/machining.js"></script>
 <script src="/alerts.js"></script>
+<script src="/search.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

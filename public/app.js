@@ -5,11 +5,15 @@
 
 const TAB_LABELS = {
   home: '🏠 Home',
-  myjobs: '🔧 My Jobs',
-  alljobs: '📋 All Jobs',
+  alljobs: '📋 All Builds',
+  allmachining: '🛠️ All Machining',
   rottler: '⚙️ Rottler',
   tunnelvision: '🌀 Tunnel Vision',
-  machining: '🛠️ Machining',
+  machining: "🛠️ Jake's Machining",
+  machining_lou: "🛠️ Lou's Machining",
+  machining_sab: "🛠️ Sab's Machining",
+  machining_mike: "🛠️ Mike's Machining",
+  balancing: '⚖️ Balancing',
   partpayments: '💰 Part Payments',
   settings: '⚙️ Settings',
   history: '🕘 History',
@@ -17,6 +21,8 @@ const TAB_LABELS = {
 
 let session = null; // { token, userId, name, role, tabs, ... }
 let activeTab = 'home';
+let navLabelMap = {}; // tabId -> full label (including emoji), including expanded builds_/machining_ ids
+let navTabIds = []; // ordered list of actual tab ids currently in the nav
 
 function saveSession(s) {
   session = s;
@@ -83,7 +89,28 @@ function showApp() {
   appEl.hidden = false;
   applyTheme();
   buildNav();
-  setActiveTab(session.tabs.includes('home') ? 'home' : session.tabs[0]);
+  wireHeader();
+  setActiveTab(navTabIds.includes('home') ? 'home' : navTabIds[0]);
+}
+
+function wireHeader() {
+  document.getElementById('topbar-user').textContent = `${session.name} · ${session.role}`;
+  document.getElementById('settings-shortcut').addEventListener('click', () => setActiveTab('settings'));
+  wireSearchBubble();
+  refreshAlertsIndicator();
+}
+
+async function refreshAlertsIndicator() {
+  const btn = document.getElementById('alerts-indicator');
+  try {
+    const status = await api('/.netlify/functions/push-subscribe');
+    const on = !!(status.subscribed && status.alertsEnabled);
+    btn.textContent = on ? '🔔' : '🔕';
+    btn.title = on ? 'Alerts on — tap Settings to manage' : 'Alerts off — tap Settings to enable';
+  } catch {
+    btn.textContent = '🔕';
+  }
+  btn.onclick = () => setActiveTab('settings');
 }
 
 function buildNav() {
@@ -94,9 +121,26 @@ function buildNav() {
   sidebarTabs.innerHTML = '';
   bottomNav.innerHTML = '';
 
+  // "myjobs" in session.tabs expands into one named tab per sheet the user
+  // can access (their own sheet first, then anyone in their viewSheets) —
+  // e.g. Jake sees "Jake's Builds", "Mike's Builds", "Frank's Builds", etc,
+  // all separately, instead of a single generic "My Jobs" tab.
+  const navEntries = [];
   session.tabs.filter((t) => t !== 'history').forEach((tabId) => {
-    const label = TAB_LABELS[tabId] || tabId;
+    if (tabId === 'myjobs') {
+      const sheets = [session.personSheet, ...(session.viewSheets || [])].filter(Boolean);
+      const seen = new Set();
+      sheets.forEach((sheet) => {
+        if (seen.has(sheet)) return;
+        seen.add(sheet);
+        navEntries.push({ id: `builds_${sheet}`, label: `🔧 ${(PERSON_NAMES[sheet] || sheet)}'s Builds` });
+      });
+      return;
+    }
+    navEntries.push({ id: tabId, label: TAB_LABELS[tabId] || tabId });
+  });
 
+  navEntries.forEach(({ id: tabId, label }) => {
     const sideBtn = document.createElement('button');
     sideBtn.className = 'tab-btn';
     sideBtn.dataset.tab = tabId;
@@ -112,6 +156,9 @@ function buildNav() {
     bottomNav.appendChild(bottomBtn);
   });
 
+  navLabelMap = Object.fromEntries(navEntries.map((e) => [e.id, e.label]));
+  navTabIds = navEntries.map((e) => e.id);
+
   sidebarUser.textContent = `${session.name} · ${session.role}`;
 }
 
@@ -120,7 +167,7 @@ function setActiveTab(tabId) {
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.tab === tabId);
   });
-  document.getElementById('page-title').textContent = (TAB_LABELS[tabId] || tabId).replace(/^\S+\s/, '');
+  document.getElementById('page-title').textContent = (navLabelMap[tabId] || TAB_LABELS[tabId] || tabId).replace(/^\S+\s/, '');
   renderTab(tabId);
 }
 
@@ -128,6 +175,10 @@ function setActiveTab(tabId) {
 function renderTab(tabId) {
   const content = document.getElementById('content');
 
+  if (tabId === 'home') {
+    renderHomeTab();
+    return;
+  }
   if (tabId === 'settings') {
     content.innerHTML = renderSettings();
     wireSettings();
@@ -137,12 +188,16 @@ function renderTab(tabId) {
     });
     return;
   }
-  if (tabId === 'myjobs') {
-    renderMyJobsTab();
+  if (tabId.startsWith('builds_')) {
+    renderMyJobsTab(tabId.slice('builds_'.length));
     return;
   }
   if (tabId === 'alljobs') {
     renderAllJobsTab();
+    return;
+  }
+  if (tabId === 'allmachining') {
+    renderAllMachiningTab();
     return;
   }
   if (tabId === 'tunnelvision') {
@@ -153,6 +208,10 @@ function renderTab(tabId) {
     renderRottlerTab();
     return;
   }
+  if (tabId === 'balancing') {
+    renderBalancingTab();
+    return;
+  }
   if (tabId === 'partpayments') {
     renderPartPaymentsTab();
     return;
@@ -161,8 +220,8 @@ function renderTab(tabId) {
     renderHistoryTab();
     return;
   }
-  if (tabId === 'machining') {
-    renderMachiningTab();
+  if (tabId === 'machining' || tabId.startsWith('machining_')) {
+    renderMachiningTab(tabId);
     return;
   }
 
@@ -178,6 +237,7 @@ function renderTab(tabId) {
 
 function renderSettings() {
   const theme = localStorage.getItem('de_theme') || 'dark';
+  const undoDuration = parseInt(localStorage.getItem('de_undo_duration') || '5', 10);
   return `
     <div class="stub-card" style="margin-bottom:14px;">
       <h2>Account</h2>
@@ -194,6 +254,13 @@ function renderSettings() {
       </label>
     </div>
     <div id="alerts-holder"></div>
+    <div class="stub-card" style="margin-top:14px;">
+      <h2>Undo Toast Duration</h2>
+      <p class="muted-sm">How long the "Undo" option stays available after deleting or completing a job.</p>
+      <div class="toolbar-group" style="margin-top:8px;">
+        ${[3, 5, 10].map((s) => `<button class="chip undo-duration-btn ${undoDuration === s ? 'chip-active' : ''}" data-secs="${s}">${s}s</button>`).join('')}
+      </div>
+    </div>
     ${session.role === 'admin' ? `
     <div class="stub-card" style="margin-top:14px;">
       <h2>History</h2>
@@ -205,6 +272,29 @@ function renderSettings() {
       <p class="muted-sm">One-time import of the historical job data from the original Google Sheet. Safe to click — it won't overwrite any sheet that already has jobs in it, unless you explicitly force it.</p>
       <button id="import-legacy-btn" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Check Import Status</button>
       <div id="import-legacy-result" class="muted-sm" style="margin-top:10px;"></div>
+    </div>
+    <div class="stub-card" style="margin-top:14px;">
+      <h2>Fix Job Numbers ("40309.0" → "40309")</h2>
+      <p class="muted-sm">One-time cleanup for job numbers and TV numbers imported with a trailing ".0". Safe to run more than once — anything already clean is skipped.</p>
+      <button id="cleanup-jobnums-btn" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Check How Many Need Fixing</button>
+      <div id="cleanup-jobnums-result" class="muted-sm" style="margin-top:10px;"></div>
+    </div>
+    <div class="stub-card" style="margin-top:14px;">
+      <h2>Legacy Upload Portal</h2>
+      <p class="muted-sm">Download a template, add rows for anything not already in the app, then upload it back. Only genuinely new job numbers are added — anything already in the app is left untouched.</p>
+      <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+        <a href="/templates/Dandy-Engines-Jobs-Import-Template.xlsx" download style="padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);text-decoration:none;">⬇ Jobs Template</a>
+        <a href="/templates/Dandy-Engines-Rottler-Import-Template.xlsx" download style="padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);text-decoration:none;">⬇ Rottler Template</a>
+      </div>
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px;">
+        <label>Upload a filled-in Jobs template
+          <input type="file" id="upload-jobs-file" accept=".xlsx">
+        </label>
+        <label>Upload a filled-in Rottler template
+          <input type="file" id="upload-rottler-file" accept=".xlsx">
+        </label>
+      </div>
+      <div id="legacy-upload-result" class="muted-sm" style="margin-top:10px;"></div>
     </div>` : ''}
   `;
 }
@@ -220,11 +310,75 @@ function wireSettings() {
       applyTheme();
     });
   });
+  document.querySelectorAll('.undo-duration-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      localStorage.setItem('de_undo_duration', btn.dataset.secs);
+      renderTab('settings');
+    });
+  });
   document.getElementById('open-history-btn')?.addEventListener('click', () => {
     document.getElementById('page-title').textContent = 'History';
     renderHistoryTab();
   });
   document.getElementById('import-legacy-btn')?.addEventListener('click', checkImportStatus);
+  document.getElementById('cleanup-jobnums-btn')?.addEventListener('click', checkCleanupStatus);
+  document.getElementById('upload-jobs-file')?.addEventListener('change', (e) => handleLegacyUpload(e, 'jobs'));
+  document.getElementById('upload-rottler-file')?.addEventListener('change', (e) => handleLegacyUpload(e, 'rottler'));
+}
+
+async function handleLegacyUpload(e, type) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const resultEl = document.getElementById('legacy-upload-result');
+  resultEl.textContent = 'Uploading and importing…';
+  try {
+    const fileBase64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const { results } = await api('/.netlify/functions/legacy-upload', {
+      method: 'POST', body: JSON.stringify({ type, fileBase64 }),
+    });
+    resultEl.innerHTML = Object.entries(results).map(([k, v]) => `${k}: ${v}`).join('<br>');
+  } catch (err) {
+    resultEl.textContent = "Couldn't import: " + err.message;
+  } finally {
+    e.target.value = '';
+  }
+}
+
+async function checkCleanupStatus() {
+  const result = document.getElementById('cleanup-jobnums-result');
+  result.textContent = 'Checking…';
+  try {
+    const { total, counts } = await api('/.netlify/functions/cleanup-job-numbers');
+    if (total === 0) {
+      result.textContent = 'Nothing to fix — all job numbers are already clean.';
+      return;
+    }
+    const lines = Object.entries(counts).map(([sheet, n]) => `${sheet}: ${n} to fix`);
+    result.innerHTML = `${total} total found.<br>` + lines.join('<br>') + `
+      <button id="run-cleanup-btn" class="btn-primary" style="margin-top:10px;">Fix Them Now</button>
+    `;
+    document.getElementById('run-cleanup-btn').addEventListener('click', runCleanup);
+  } catch (e) {
+    result.textContent = "Couldn't check: " + e.message;
+  }
+}
+
+async function runCleanup() {
+  const result = document.getElementById('cleanup-jobnums-result');
+  result.textContent = 'Fixing…';
+  try {
+    const { total, results } = await api('/.netlify/functions/cleanup-job-numbers', {
+      method: 'POST', body: JSON.stringify({ action: 'run' }),
+    });
+    result.innerHTML = `Fixed ${total} total.<br>` + Object.entries(results).map(([k, v]) => `${k}: ${v}`).join('<br>');
+  } catch (e) {
+    result.textContent = "Couldn't fix: " + e.message;
+  }
 }
 
 async function checkImportStatus() {

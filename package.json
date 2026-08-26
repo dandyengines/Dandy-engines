@@ -5,6 +5,7 @@
   "description": "Dandy Engines — workshop job flow & priority system",
   "dependencies": {
     "@netlify/blobs": "^7.0.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   }
 }

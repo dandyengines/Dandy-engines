@@ -1,5 +1,5 @@
 # Dandy Engines
- 
+
 Workshop job flow & priority system. Data lives in Netlify Blobs, accessed via
 Netlify Functions — no separate database. Same architecture pattern as the
 911 Restoration Log app this was based on.
@@ -70,6 +70,24 @@ box — but since it ships in the source, generate your own before going
 public and set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` as environment
 variables (Netlify CLI: `npx web-push generate-vapid-keys`).
 
+## Fixing "MissingBlobsEnvironmentError" / server error on login
+
+Some Netlify sites don't reliably auto-inject Netlify Blobs credentials
+into functions — a known platform quirk, not a bug in this code. If login
+gives a 500 error and the response body mentions `MissingBlobsEnvironmentError`,
+set these two environment variables (Site configuration → Environment
+variables) to force it to work explicitly instead of relying on auto-injection:
+
+| Variable | Where to find it |
+|---|---|
+| `BLOBS_SITE_ID` | Site configuration → General → Site details → **Site ID** |
+| `BLOBS_TOKEN` | Your Netlify avatar (top right) → User settings → Applications → **Personal access tokens** → New access token |
+
+After adding both, trigger a new deploy (any small commit works, or use
+"Trigger deploy" if builds are active) so the functions pick up the new
+variables — environment variable changes don't apply retroactively to
+already-built functions.
+
 ## Deploy to Netlify (~2 minutes)
 
 **Option A — Netlify CLI (recommended)**
@@ -114,3 +132,35 @@ way — a plain Safari/Chrome tab can't receive them.
 - `public/fonts/StraczynskiBold-Vy00.ttf` — the brand heading/menu font
 - `public/sw.js` — bump the `CACHE` constant on every release, or installed
   phones will keep serving the old cached shell after a redeploy
+
+## Importing your original spreadsheet data
+
+Your historical jobs, Tunnel Vision entries, and Rottler data (converted
+from the spreadsheets you sent) are bundled into this build as
+`netlify/functions/legacy-data.json`. To load them into the live app:
+
+1. Log in as Jake (admin).
+2. Go to **Settings** → **Import Legacy Spreadsheet Data** → **Check Import Status**.
+3. It'll show how many jobs/entries exist already vs. how many are available
+   to import for each sheet.
+4. Click **Run Import**.
+
+This is safe to click more than once — it will **not** overwrite a sheet
+that already has jobs in it, so accidentally running it twice won't wipe
+out anything you've added by hand in the meantime.
+
+A few honest notes on the conversion itself:
+- The old sheet only had a single "complete or not" checkbox per job, not
+  our full stage system — so every imported job lands as either
+  **Complete** or **Not Started**, with the original free-text status
+  copied into that job's first note so no detail is lost. You'll want to
+  manually move active jobs into the right stage as you work through them.
+- Tunnel Vision's old "received" and "completed" checkboxes per part
+  don't map perfectly onto the new Taken for Grout / Returned from Grout /
+  On Rack statuses (those distinctions didn't exist in the old sheet) — it
+  defaults to Arrived or Complete based on what was ticked, with the full
+  original description preserved in notes.
+- A handful of Rottler entries had a person name (like "Frank Sr." or
+  "Glen") that isn't one of the app's five responsible people — those are
+  filed under Jake with a note explaining who it was originally logged
+  under, so nothing gets silently dropped.

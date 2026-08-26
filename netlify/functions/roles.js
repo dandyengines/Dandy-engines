@@ -21,7 +21,9 @@ const USERS = {
     editsOwnSheet: true,
     viewSheets: ['mike', 'frank', 'sab', 'lou'],
     rottler: 'edit',
-    tabs: ['home', 'myjobs', 'alljobs', 'rottler', 'tunnelvision', 'machining', 'partpayments', 'settings', 'history'],
+    // Jake (admin) sees and can edit every Machining tab — his own plus
+    // everyone else's — in addition to all his other tabs.
+    tabs: ['home', 'myjobs', 'alljobs', 'allmachining', 'rottler', 'tunnelvision', 'machining', 'machining_lou', 'machining_sab', 'machining_mike', 'balancing', 'partpayments', 'settings', 'history'],
   },
   mike: {
     name: 'Mike',
@@ -31,7 +33,7 @@ const USERS = {
     editsOwnSheet: true,
     viewSheets: ['jake', 'frank', 'sab', 'lou'],
     rottler: 'edit',
-    tabs: ['home', 'myjobs', 'alljobs', 'rottler', 'partpayments', 'settings'],
+    tabs: ['home', 'myjobs', 'alljobs', 'allmachining', 'rottler', 'machining_mike', 'partpayments', 'settings'],
   },
   frank: {
     name: 'Frank',
@@ -41,7 +43,7 @@ const USERS = {
     editsOwnSheet: true,
     viewSheets: ['jake', 'mike', 'sab', 'lou'],
     rottler: 'view',
-    tabs: ['home', 'myjobs', 'alljobs', 'rottler', 'settings'],
+    tabs: ['home', 'myjobs', 'alljobs', 'allmachining', 'rottler', 'settings'],
   },
   sab: {
     name: 'Sab',
@@ -51,7 +53,7 @@ const USERS = {
     editsOwnSheet: true,
     viewSheets: ['jake', 'frank', 'lou', 'mike'],
     rottler: 'view',
-    tabs: ['home', 'myjobs', 'alljobs', 'rottler', 'settings'],
+    tabs: ['home', 'myjobs', 'alljobs', 'allmachining', 'rottler', 'machining_sab', 'settings'],
   },
   lou: {
     name: 'Lou',
@@ -61,7 +63,7 @@ const USERS = {
     editsOwnSheet: true,
     viewSheets: ['jake', 'frank', 'sab', 'mike'],
     rottler: 'view',
-    tabs: ['home', 'myjobs', 'alljobs', 'rottler', 'settings'],
+    tabs: ['home', 'myjobs', 'alljobs', 'allmachining', 'rottler', 'machining_lou', 'settings'],
   },
   dean: {
     name: 'Dean',
@@ -71,7 +73,7 @@ const USERS = {
     editsOwnSheet: true,
     viewSheets: ['jake', 'frank', 'sab', 'mike'],
     rottler: 'view',
-    tabs: ['home', 'myjobs', 'alljobs', 'rottler', 'settings'],
+    tabs: ['home', 'myjobs', 'alljobs', 'allmachining', 'rottler', 'settings'],
   },
   ulrich: {
     name: 'Ulrich',
@@ -81,7 +83,7 @@ const USERS = {
     editsOwnSheet: true,
     viewSheets: ['jake', 'lou', 'sab', 'mike'],
     rottler: 'view',
-    tabs: ['home', 'myjobs', 'alljobs', 'rottler', 'settings'],
+    tabs: ['home', 'myjobs', 'alljobs', 'allmachining', 'rottler', 'settings'],
   },
   gus: {
     name: 'Gus',
@@ -91,7 +93,18 @@ const USERS = {
     editsOwnSheet: true,
     viewSheets: ['jake', 'frank', 'mike', 'sab'],
     rottler: 'input', // full edit + the "New Job" input form
-    tabs: ['home', 'myjobs', 'alljobs', 'rottler', 'settings'],
+    tabs: ['home', 'myjobs', 'alljobs', 'allmachining', 'rottler', 'settings'],
+  },
+  josh: {
+    name: 'Josh',
+    password: pw('JOSH_PASSWORD', 'joshm'),
+    role: 'staff',
+    personSheet: null,
+    editsOwnSheet: false,
+    viewSheets: [],
+    rottler: null,
+    balancing: 'input', // same pattern as gus.rottler = 'input': full edit + the "New Job" input form
+    tabs: ['home', 'balancing', 'alljobs', 'allmachining', 'settings'],
   },
   mel: {
     name: 'Mel',
@@ -101,7 +114,7 @@ const USERS = {
     editsOwnSheet: false,
     viewSheets: [], // Mel doesn't get per-person sheets, only the master list
     rottler: null,
-    tabs: ['partpayments', 'alljobs', 'settings'],
+    tabs: ['partpayments', 'alljobs', 'allmachining', 'settings'],
   },
   nathaniel: {
     name: 'Nathaniel',
@@ -113,7 +126,7 @@ const USERS = {
     // No Tunnel Vision, Part Payments, or Machining.
     viewSheets: ['jake', 'mike', 'frank', 'sab', 'lou'],
     rottler: 'view',
-    tabs: ['home', 'alljobs', 'rottler', 'settings'],
+    tabs: ['home', 'alljobs', 'allmachining', 'rottler', 'settings'],
   },
 };
 

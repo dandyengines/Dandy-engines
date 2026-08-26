@@ -6,7 +6,10 @@ const STAGES = [
   { id: 'waitingparts', label: 'Waiting on Parts', cls: 'stage-blue' },
   { id: 'machining', label: 'Machining', cls: 'stage-yellow' },
   { id: 'dummyassembly', label: 'Awaiting Dummy Assembly', cls: 'stage-amber' },
-  { id: 'ready', label: 'Ready / Assembling / Dyno', cls: 'stage-green' },
+  { id: 'readyforassembly', label: 'Ready for Assembly', cls: 'stage-green' },
+  { id: 'assembling', label: 'Assembling', cls: 'stage-green' },
+  { id: 'readyfordyno', label: 'Ready for Dyno', cls: 'stage-green' },
+  { id: 'awaitingpayment', label: 'Awaiting Payment', cls: 'stage-amber' },
   { id: 'onhold', label: 'On Hold', cls: 'stage-onhold' },
   { id: 'complete', label: 'Complete', cls: 'stage-green' },
 ];
@@ -104,6 +107,11 @@ async function uploadJobPhoto(file, sheet, jobId) {
 function jobEditFormHTML(job, sheet) {
   return `
     <div class="detail-grid">
+      <label>Job # <input type="text" class="f-jobnumber" value="${escapeHtml(job.jobNumber || '')}"></label>
+      <label>Customer <input type="text" class="f-customer" value="${escapeHtml(job.customer || '')}"></label>
+      <label>Customer phone <input type="tel" class="f-phone" value="${escapeHtml(job.customerPhone || '')}"></label>
+      <label>Engine <input type="text" class="f-engine" value="${escapeHtml(job.engine || '')}"></label>
+      <label>Invoice # <input type="text" class="f-invoicenumber" value="${escapeHtml(job.invoiceNumber || '')}"></label>
       <label>Stage
         <select class="f-stage">
           ${STAGES.map((s) => `<option value="${s.id}" ${s.id === job.stage ? 'selected' : ''}>${s.label}</option>`).join('')}
@@ -132,6 +140,10 @@ function jobEditFormHTML(job, sheet) {
       <h4>Photos</h4>
       ${photoGalleryHTML(job)}
       <input type="file" accept="image/*" class="f-photo-upload" style="margin-top:8px;">
+    </div>
+    <div class="job-actions-row">
+      <button class="btn-complete">✓ Complete</button>
+      <button class="btn-delete">🗑 Delete</button>
     </div>
   `;
 }

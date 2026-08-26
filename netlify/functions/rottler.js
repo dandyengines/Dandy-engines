@@ -4,6 +4,9 @@ const { recordHistory, clone } = require('./_history');
 const { notifyUser } = require('./_push');
 
 const SHEET_IDS = ['jake', 'mike', 'frank', 'sab', 'lou'];
+// Rottler linking/autocomplete also covers Machining jobs, not just Builds.
+const MACHINING_SHEET_IDS = ['machining', 'machining_lou', 'machining_sab', 'machining_mike'];
+const ALL_LINKABLE_SHEET_IDS = [...SHEET_IDS, ...MACHINING_SHEET_IDS];
 
 function canView(user) { return user.rottler !== null && user.rottler !== undefined; }
 function canInput(user) { return user.role === 'admin' || user.rottler === 'input'; }
@@ -41,12 +44,12 @@ exports.handler = async (event) => {
     }
 
     if (params.action === 'lookup') {
-      // Look up a job number across every person sheet, to power Gus's
-      // "is this the correct job?" confirmation prompt.
+      // Look up a job number across every Build AND Machining sheet, to
+      // power Gus's "is this the correct job?" confirmation prompt.
       const q = (params.jobNumber || '').trim();
       if (!q) return json(200, { match: null });
 
-      for (const sheet of SHEET_IDS) {
+      for (const sheet of ALL_LINKABLE_SHEET_IDS) {
         const data = await loadSheet(store, sheet);
         const found = data.jobs.find((j) => (j.jobNumber || '').trim().toLowerCase() === q.toLowerCase());
         if (found) {
@@ -56,6 +59,26 @@ exports.handler = async (event) => {
         }
       }
       return json(200, { match: null });
+    }
+
+    if (params.action === 'autocomplete') {
+      // Live-suggestion dropdown as the job # is typed — partial match
+      // across every Build AND Machining sheet, up to 8 results.
+      const q = (params.q || '').trim().toLowerCase();
+      if (q.length < 1) return json(200, { suggestions: [] });
+
+      const suggestions = [];
+      for (const sheet of ALL_LINKABLE_SHEET_IDS) {
+        const data = await loadSheet(store, sheet);
+        for (const j of data.jobs) {
+          if ((j.jobNumber || '').toLowerCase().includes(q)) {
+            suggestions.push({ sheet, jobId: j.id, jobNumber: j.jobNumber, customer: j.customer, engine: j.engine });
+            if (suggestions.length >= 8) break;
+          }
+        }
+        if (suggestions.length >= 8) break;
+      }
+      return json(200, { suggestions });
     }
 
     return json(400, { error: 'Unknown action' });
@@ -87,7 +110,7 @@ exports.handler = async (event) => {
         clearance,
         torquePlate: body.torquePlate?.on ? { on: true, value: body.torquePlate.value || '' } : { on: false, value: '' },
         raceHone: body.raceHone?.on
-          ? { on: true, rpk: body.raceHone.rpk || '', rk: body.raceHone.rk || '', rvk: body.raceHone.rvk || '', angle: body.raceHone.angle || '' }
+          ? { on: true, rpk: body.raceHone.rpk || '', rk: body.raceHone.rk || '', rvk: body.raceHone.rvk || '', angle: body.raceHone.angle || '', stonesUsed: body.raceHone.stonesUsed || '' }
           : { on: false },
         notes: body.notes || '',
         redoOf: body.action === 'redo' ? body.redoOfId : null,

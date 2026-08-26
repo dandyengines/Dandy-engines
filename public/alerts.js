@@ -50,6 +50,7 @@ function wireAlertsSettings() {
       method: 'POST',
       body: JSON.stringify({ action: 'setPrefs', alertsEnabled: e.target.checked }),
     });
+    refreshAlertsIndicator();
   });
   document.querySelectorAll('.alert-cat').forEach((cb) => {
     cb.addEventListener('change', async () => {
@@ -85,6 +86,7 @@ async function enablePush() {
 
     // Re-render settings to show the "enabled" state
     renderTab('settings');
+    refreshAlertsIndicator();
   } catch (e) {
     alert("Couldn't enable alerts: " + e.message);
   }

@@ -1,6 +1,6 @@
-// ===== Rottler — directory: input form + searchable list =====
+// ===== Rottler — directory: input form + searchable/sortable list =====
 
-let rottlerState = { entries: [], canInput: false, linkedMatch: null };
+let rottlerState = { entries: [], canInput: false, linkedMatch: null, sortMode: 'date', raceHoneOnly: false };
 
 async function renderRottlerTab() {
   const content = document.getElementById('content');
@@ -22,12 +22,31 @@ function paintRottler() {
   content.innerHTML = `
     ${rottlerState.canInput ? rottlerInputFormHTML() : ''}
     <h2 class="section-title">Directory</h2>
+    <div class="sheet-toolbar">
+      <div class="toolbar-group">
+        <button class="chip ${rottlerState.sortMode === 'date' ? 'chip-active' : ''}" data-rsort="date">Most Recent</button>
+        <button class="chip ${rottlerState.sortMode === 'jobnumber' ? 'chip-active' : ''}" data-rsort="jobnumber">Job #</button>
+        <button class="chip ${rottlerState.sortMode === 'name' ? 'chip-active' : ''}" data-rsort="name">Name</button>
+        <button class="chip ${rottlerState.sortMode === 'engine' ? 'chip-active' : ''}" data-rsort="engine">Engine</button>
+      </div>
+      <div class="toolbar-group">
+        <label class="chip-toggle"><input type="checkbox" id="rottler-racehone-only" ${rottlerState.raceHoneOnly ? 'checked' : ''}> Race Hone only</label>
+      </div>
+    </div>
     <input type="text" id="rottler-search" class="search-input" placeholder="Search job #, customer, engine…">
     <div id="rottler-list" class="job-list"></div>
   `;
   if (rottlerState.canInput) wireRottlerForm();
   paintRottlerList();
   document.getElementById('rottler-search').addEventListener('input', paintRottlerList);
+  document.querySelectorAll('[data-rsort]').forEach((b) => b.addEventListener('click', () => {
+    rottlerState.sortMode = b.dataset.rsort;
+    paintRottler();
+  }));
+  document.getElementById('rottler-racehone-only').addEventListener('change', (e) => {
+    rottlerState.raceHoneOnly = e.target.checked;
+    paintRottlerList();
+  });
 }
 
 function rottlerInputFormHTML() {
@@ -35,7 +54,9 @@ function rottlerInputFormHTML() {
     <div class="stub-card" style="margin-bottom:20px;">
       <h2>New Job</h2>
       <div class="detail-grid">
-        <label>Job # <input type="text" id="rf-jobnumber"></label>
+        <label style="position:relative;">Job # <input type="text" id="rf-jobnumber" autocomplete="off">
+          <div id="rf-jobnumber-suggestions" class="autocomplete-dropdown" hidden></div>
+        </label>
         <label>Person Responsible
           <select id="rf-person">
             <option value="jake">Jake</option><option value="mike">Mike</option>
@@ -50,11 +71,11 @@ function rottlerInputFormHTML() {
       </div>
       <p id="rf-lookup-msg" class="muted-sm" style="margin-top:8px;" hidden></p>
 
-      <div class="tv-comp-row" style="margin-top:14px;">
+      <div class="rottler-toggle-row" style="margin-top:14px;">
         <label class="urgent-toggle"><input type="checkbox" id="rf-torque-on"> Torque Plate</label>
         <input type="text" id="rf-torque-value" placeholder="Torque value" style="display:none;max-width:160px;" class="rf-inline-input">
       </div>
-      <div class="tv-comp-row">
+      <div class="rottler-toggle-row">
         <label class="urgent-toggle"><input type="checkbox" id="rf-race-on"> Race Hone</label>
       </div>
       <div id="rf-race-fields" class="detail-grid" style="display:none;margin-top:6px;">
@@ -62,6 +83,7 @@ function rottlerInputFormHTML() {
         <label>RK <input type="text" id="rf-rk"></label>
         <label>RVK <input type="text" id="rf-rvk"></label>
         <label>Angle <input type="text" id="rf-angle"></label>
+        <label>Stones used <input type="text" id="rf-stonesused"></label>
       </div>
 
       <label style="display:block;margin-top:10px;">Notes<textarea id="rf-notes" rows="2" style="width:100%;"></textarea></label>
@@ -70,8 +92,15 @@ function rottlerInputFormHTML() {
   `;
 }
 
+function sheetDisplayLabel(sheet) {
+  const machiningLabels = { machining: "Jake's Machining", machining_lou: "Lou's Machining", machining_sab: "Sab's Machining", machining_mike: "Mike's Machining" };
+  if (machiningLabels[sheet]) return machiningLabels[sheet];
+  return `${PERSON_NAMES[sheet] || sheet}'s Builds`;
+}
+
 function wireRottlerForm() {
   const jobNumberInput = document.getElementById('rf-jobnumber');
+  const suggestionsBox = document.getElementById('rf-jobnumber-suggestions');
   const pistonOD = document.getElementById('rf-pistonod');
   const boreSize = document.getElementById('rf-boresize');
   const clearance = document.getElementById('rf-clearance');
@@ -91,32 +120,42 @@ function wireRottlerForm() {
   torqueOn.addEventListener('change', () => { torqueValue.style.display = torqueOn.checked ? 'inline-block' : 'none'; });
   raceOn.addEventListener('change', () => { raceFields.style.display = raceOn.checked ? 'grid' : 'none'; });
 
-  let lookupTimer;
+  // Live autocomplete-style suggestions as the job # is typed — searches
+  // across Builds AND Machining, click-to-populate customer/engine.
+  let autocompleteTimer;
   jobNumberInput.addEventListener('input', () => {
-    clearTimeout(lookupTimer);
+    clearTimeout(autocompleteTimer);
     rottlerState.linkedMatch = null;
     lookupMsg.hidden = true;
     const q = jobNumberInput.value.trim();
-    if (!q) return;
-    lookupTimer = setTimeout(async () => {
+    if (!q) { suggestionsBox.hidden = true; return; }
+    autocompleteTimer = setTimeout(async () => {
       try {
-        const { match } = await api(`/.netlify/functions/rottler?action=lookup&jobNumber=${encodeURIComponent(q)}`);
-        if (match) {
-          lookupMsg.hidden = false;
-          lookupMsg.innerHTML = `Is this the correct job? <strong>${escapeHtml(match.customer)}</strong> — ${escapeHtml(match.engine)} (${match.sheet}'s sheet)
-            <button id="rf-confirm-yes" style="margin-left:8px;">Yes, link it</button>
-            <button id="rf-confirm-no">No, it's new</button>`;
-          document.getElementById('rf-confirm-yes').addEventListener('click', () => {
-            rottlerState.linkedMatch = match;
-            lookupMsg.innerHTML = `✓ Linked to ${escapeHtml(match.customer)}'s job.`;
+        const { suggestions } = await api(`/.netlify/functions/rottler?action=autocomplete&q=${encodeURIComponent(q)}`);
+        if (!suggestions.length) { suggestionsBox.hidden = true; return; }
+        suggestionsBox.hidden = false;
+        suggestionsBox.innerHTML = suggestions.map((s, i) => `
+          <button type="button" class="autocomplete-row" data-idx="${i}">
+            <strong>${escapeHtml(s.jobNumber || '—')}</strong> ${escapeHtml(s.customer || '')} — ${escapeHtml(s.engine || '')}
+            <span class="muted-sm">(${escapeHtml(sheetDisplayLabel(s.sheet))})</span>
+          </button>`).join('');
+        suggestionsBox.querySelectorAll('.autocomplete-row').forEach((row) => {
+          row.addEventListener('click', () => {
+            const s = suggestions[row.dataset.idx];
+            jobNumberInput.value = s.jobNumber;
+            document.getElementById('rf-customer').value = s.customer || '';
+            document.getElementById('rf-engine').value = s.engine || '';
+            rottlerState.linkedMatch = { sheet: s.sheet, jobId: s.jobId, customer: s.customer, engine: s.engine };
+            suggestionsBox.hidden = true;
+            lookupMsg.hidden = false;
+            lookupMsg.innerHTML = `✓ Linked to ${escapeHtml(s.customer || '')}'s job (${escapeHtml(sheetDisplayLabel(s.sheet))}).`;
           });
-          document.getElementById('rf-confirm-no').addEventListener('click', () => {
-            rottlerState.linkedMatch = null;
-            lookupMsg.hidden = true;
-          });
-        }
-      } catch { /* silent — lookup is a convenience, not required */ }
-    }, 400);
+        });
+      } catch { /* suggestions are a convenience, not required */ }
+    }, 200);
+  });
+  document.addEventListener('click', (e) => {
+    if (!suggestionsBox.contains(e.target) && e.target !== jobNumberInput) suggestionsBox.hidden = true;
   });
 
   document.getElementById('rf-save').addEventListener('click', async () => {
@@ -137,6 +176,7 @@ function wireRottlerForm() {
         rk: document.getElementById('rf-rk').value,
         rvk: document.getElementById('rf-rvk').value,
         angle: document.getElementById('rf-angle').value,
+        stonesUsed: document.getElementById('rf-stonesused').value,
       } : { on: false },
       notes: document.getElementById('rf-notes').value,
     };
@@ -157,9 +197,24 @@ function wireRottlerForm() {
 function paintRottlerList() {
   const list = document.getElementById('rottler-list');
   const q = (document.getElementById('rottler-search')?.value || '').trim().toLowerCase();
-  const filtered = rottlerState.entries.filter((e) =>
+  let filtered = rottlerState.entries.filter((e) =>
     !q || [e.jobNumber, e.customer, e.engine].some((f) => (f || '').toLowerCase().includes(q))
   );
+  if (rottlerState.raceHoneOnly) filtered = filtered.filter((e) => e.raceHone?.on);
+
+  if (rottlerState.sortMode === 'jobnumber') {
+    filtered = [...filtered].sort((a, b) => (a.jobNumber || '').localeCompare(b.jobNumber || '', undefined, { numeric: true }));
+  } else if (rottlerState.sortMode === 'name') {
+    filtered = [...filtered].sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
+  } else if (rottlerState.sortMode === 'engine') {
+    filtered = [...filtered].sort((a, b) => (a.engine || '').localeCompare(b.engine || ''));
+  } else {
+    // Default and explicit "Most Recent": always sort by date descending —
+    // never rely on storage/array order, since legacy-imported entries and
+    // newly-created ones weren't in a consistent order otherwise.
+    filtered = [...filtered].sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+  }
+
   list.innerHTML = filtered.map(rottlerRowHTML).join('') || '<p class="muted-sm">No entries found.</p>';
   wireRottlerRedoButtons();
 }
@@ -170,7 +225,7 @@ function rottlerRowHTML(e) {
     <div class="job-card-row" style="cursor:default;">
       <div class="job-card-main">
         <div class="job-card-title"><strong>${escapeHtml(e.jobNumber || '—')}</strong> ${escapeHtml(e.customer || '')} ${e.redoOf ? '<span class="muted-sm">(redo)</span>' : ''}</div>
-        <div class="job-card-sub">${escapeHtml(e.engine || '')} · Piston OD ${e.pistonOD ?? '—'} · Bore ${e.boreSize ?? '—'} · Clearance ${e.clearance ?? '—'}</div>
+        <div class="job-card-sub">${escapeHtml(e.engine || '')} · Piston OD ${e.pistonOD ?? '—'} · Bore ${e.boreSize ?? '—'} · Clearance ${e.clearance ?? '—'}${e.raceHone?.on ? ' · Race Hone' : ''}</div>
       </div>
       <div class="job-card-meta">
         <span class="muted-sm">${formatDate(e.dateAdded)}</span>
