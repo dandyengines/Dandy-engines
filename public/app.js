@@ -199,6 +199,12 @@ function renderSettings() {
       <h2>History</h2>
       <p class="muted-sm">Review and revert recent actions across every tab (last 60 days).</p>
       <button id="open-history-btn" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Open History</button>
+    </div>
+    <div class="stub-card" style="margin-top:14px;">
+      <h2>Import Legacy Spreadsheet Data</h2>
+      <p class="muted-sm">One-time import of the historical job data from the original Google Sheet. Safe to click — it won't overwrite any sheet that already has jobs in it, unless you explicitly force it.</p>
+      <button id="import-legacy-btn" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Check Import Status</button>
+      <div id="import-legacy-result" class="muted-sm" style="margin-top:10px;"></div>
     </div>` : ''}
   `;
 }
@@ -218,6 +224,39 @@ function wireSettings() {
     document.getElementById('page-title').textContent = 'History';
     renderHistoryTab();
   });
+  document.getElementById('import-legacy-btn')?.addEventListener('click', checkImportStatus);
+}
+
+async function checkImportStatus() {
+  const result = document.getElementById('import-legacy-result');
+  result.textContent = 'Checking…';
+  try {
+    const { status } = await api('/.netlify/functions/import-legacy');
+    const lines = Object.entries(status).map(([sheet, s]) => {
+      const existing = s.existingJobs ?? s.existingEntries;
+      const toImport = s.importJobs ?? s.importEntries;
+      return `${sheet}: ${existing} existing, ${toImport} available to import`;
+    });
+    result.innerHTML = lines.join('<br>') + `
+      <button id="run-import-btn" class="btn-primary" style="margin-top:10px;">Run Import</button>
+    `;
+    document.getElementById('run-import-btn').addEventListener('click', runImport);
+  } catch (e) {
+    result.textContent = "Couldn't check: " + e.message;
+  }
+}
+
+async function runImport() {
+  const result = document.getElementById('import-legacy-result');
+  result.textContent = 'Importing… this may take a few seconds.';
+  try {
+    const { results } = await api('/.netlify/functions/import-legacy', {
+      method: 'POST', body: JSON.stringify({ action: 'run' }),
+    });
+    result.innerHTML = Object.entries(results).map(([k, v]) => `${k}: ${v}`).join('<br>');
+  } catch (e) {
+    result.textContent = "Couldn't import: " + e.message;
+  }
 }
 
 function applyTheme() {
