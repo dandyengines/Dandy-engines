@@ -2,6 +2,8 @@ const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 const { recordHistory, clone } = require('./_history');
 const { notifyUser } = require('./_push');
+const { USERS } = require('./roles');
+const { loadMatrix, getPerm } = require('./_permissions');
 
 const SHEET_IDS = ['jake', 'mike', 'frank', 'sab', 'lou'];
 // Rottler linking/autocomplete also covers Machining jobs, not just Builds.
@@ -10,6 +12,27 @@ const ALL_LINKABLE_SHEET_IDS = [...SHEET_IDS, ...MACHINING_SHEET_IDS];
 
 function canView(user) { return user.perms.rottler !== 'unseen'; }
 function canInput(user) { return user.perms.rottler === 'edit'; }
+
+// Everyone with Rottler access (any level), for the "a Rottler entry is
+// added" alert — no longer hard-coded to Jake/Mike.
+async function usersWithRottlerAccess(store, exceptUserId) {
+  const matrix = await loadMatrix(store);
+  return Object.entries(USERS)
+    .filter(([id, u]) => id !== exceptUserId && getPerm(matrix, id, 'rottler', u.role === 'admin') !== 'unseen')
+    .map(([id]) => id);
+}
+
+// For the "note added to a job on your sheet" alert when a Rottler entry
+// auto-links to a Builds/Machining job — mirrors jobs.js's usersOnSheet.
+const MACHINING_OWNERS = { machining: 'jake', machining_lou: 'lou', machining_sab: 'sab', machining_mike: 'mike' };
+function tabIdForSheet(sheet) { return sheet in MACHINING_OWNERS ? sheet : `builds_${sheet}`; }
+async function usersOnSheet(store, sheet, exceptUserId) {
+  const matrix = await loadMatrix(store);
+  const tabId = tabIdForSheet(sheet);
+  return Object.entries(USERS)
+    .filter(([id, u]) => id !== exceptUserId && getPerm(matrix, id, tabId, u.role === 'admin') === 'edit')
+    .map(([id]) => id);
+}
 
 function nowISO() { return new Date().toISOString(); }
 
@@ -121,14 +144,14 @@ exports.handler = async (event) => {
       await recordHistory(rStore, { key: 'rottler', before, description: `${user.name} ${body.action === 'redo' ? 'redid' : 'added'} Rottler entry for job ${entry.jobNumber || '(no #)'}`, userName: user.name, area: 'rottler' });
       await saveRottler(rStore, data);
 
-      for (const uid of ['jake', 'mike']) {
-        if (uid === session.userId) continue;
+      for (const uid of await usersWithRottlerAccess(rStore, session.userId)) {
         notifyUser(rStore, uid, 'rottlerEntries', {
           title: 'Dandy Engines — Rottler', body: `${user.name} ${body.action === 'redo' ? 'redid' : 'added'} a Rottler entry for job ${entry.jobNumber || '(no #)'}.`,
         });
       }
 
-      // If linked to a job on a person sheet, add a timestamped note there.
+      // If linked to a job on a person sheet, add a timestamped note there
+      // and let that sheet's owner(s) know, if they've opted in.
       if (body.linkedSheet && body.linkedJobId) {
         const sheetData = await loadSheet(rStore, body.linkedSheet);
         const job = sheetData.jobs.find((j) => j.id === body.linkedJobId);
@@ -140,6 +163,11 @@ exports.handler = async (event) => {
             auto: true,
           });
           await saveSheet(rStore, body.linkedSheet, sheetData);
+          for (const uid of await usersOnSheet(rStore, body.linkedSheet, session.userId)) {
+            notifyUser(rStore, uid, 'noteAddedToMySheet', {
+              title: 'Dandy Engines', body: `A Rottler note was added to job ${job.jobNumber || '(no #)'} on your sheet.`,
+            });
+          }
         }
       }
 

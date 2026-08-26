@@ -2,7 +2,7 @@
 // Same sort options as All Builds: grouped by person (default), by status,
 // job #, date, or name.
 
-let allMachiningState = { data: null, sortMode: 'person' };
+let allMachiningState = { data: null, sortMode: 'person', statusFilter: '' };
 
 async function renderAllMachiningTab() {
   const content = document.getElementById('content');
@@ -42,17 +42,22 @@ function paintAllMachining() {
     for (const owner of Object.keys(data)) {
       for (const j of data[owner]) if (j.stage !== 'complete') flat.push({ ...j, owner });
     }
-    sectionsHTML = STAGES.filter((s) => s.id !== 'complete').map((stage) => {
-      const jobs = flat.filter((j) => j.stage === stage.id);
-      if (!jobs.length) return '';
-      return `
-        <div class="person-section">
-          <h3 class="person-heading">${stage.label}</h3>
-          <div class="job-list">
-            ${jobs.map((j) => `<div class="owner-tagged"><span class="owner-tag">${PERSON_NAMES[j.owner] || j.owner}</span>${jobCardHTML(j, { editable: false, sheet: j.sheet })}</div>`).join('')}
-          </div>
-        </div>`;
-    }).join('') || '<p class="muted-sm">No active machining jobs.</p>';
+    if (allMachiningState.statusFilter) {
+      const jobs = flat.filter((j) => j.stage === allMachiningState.statusFilter);
+      sectionsHTML = `<div class="job-list">${jobs.map((j) => `<div class="owner-tagged"><span class="owner-tag">${PERSON_NAMES[j.owner] || j.owner}</span>${jobCardHTML(j, { editable: false, sheet: j.sheet })}</div>`).join('') || '<p class="muted-sm">No active machining jobs at this status.</p>'}</div>`;
+    } else {
+      sectionsHTML = STAGES.filter((s) => s.id !== 'complete').map((stage) => {
+        const jobs = flat.filter((j) => j.stage === stage.id);
+        if (!jobs.length) return '';
+        return `
+          <div class="person-section">
+            <h3 class="person-heading">${stage.label}</h3>
+            <div class="job-list">
+              ${jobs.map((j) => `<div class="owner-tagged"><span class="owner-tag">${PERSON_NAMES[j.owner] || j.owner}</span>${jobCardHTML(j, { editable: false, sheet: j.sheet })}</div>`).join('')}
+            </div>
+          </div>`;
+      }).join('') || '<p class="muted-sm">No active machining jobs.</p>';
+    }
   } else {
     const flat = [];
     for (const owner of Object.keys(data)) {
@@ -73,12 +78,20 @@ function paintAllMachining() {
         <button class="chip ${sortMode === 'date' ? 'chip-active' : ''}" data-amsort="date">Date</button>
         <button class="chip ${sortMode === 'name' ? 'chip-active' : ''}" data-amsort="name">Name</button>
       </div>
+      ${sortMode === 'status' ? `
+      <div class="toolbar-group">
+        <select id="allmachining-status-filter">
+          <option value="">All Statuses (grouped)</option>
+          ${STAGES.filter((s) => s.id !== 'complete').map((s) => `<option value="${s.id}" ${allMachiningState.statusFilter === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}
+        </select>
+      </div>` : ''}
     </div>
     <input type="text" id="allmachining-search" placeholder="Search all machining jobs…" class="search-input">
     <div id="allmachining-sections">${sectionsHTML}</div>
   `;
 
   document.querySelectorAll('[data-amsort]').forEach((btn) => btn.addEventListener('click', () => { allMachiningState.sortMode = btn.dataset.amsort; paintAllMachining(); }));
+  document.getElementById('allmachining-status-filter')?.addEventListener('change', (e) => { allMachiningState.statusFilter = e.target.value; paintAllMachining(); });
 
   document.querySelectorAll('#allmachining-sections .job-card-row').forEach((row) => {
     row.addEventListener('click', () => {

@@ -243,24 +243,31 @@ function paintBalancingList() {
   }
 
   list.innerHTML = filtered.map(balancingRowHTML).join('') || '<p class="muted-sm">No entries found.</p>';
+  wireBalancingListInteractions();
   wireBalancingRowButtons();
 }
 
 function balancingRowHTML(e) {
   const bits = [];
-  if (e.pistonsBalanced) bits.push('Pistons');
-  if (e.rodsBalanced) bits.push('Rods');
-  if (e.flywheelFlexplateBalanced) bits.push('Flywheel/Flex plate');
-  if (e.balancerBalanced) bits.push('Balancer');
-  if (e.raceBalance) bits.push('Race balance');
-  if (e.heavyMetal) bits.push('Heavy metal');
+  if (e.pistonsBalanced) bits.push('Pistons balanced');
+  if (e.rodsBalanced) bits.push('Rods balanced');
+  if (e.flywheelFlexplateBalanced) bits.push('Flywheel/Flex plate balanced');
+  if (e.balancerBalanced) bits.push('Balancer balanced');
+  if (e.raceBalance) bits.push(`Race balance (surcharge: ${escapeHtml(e.extraHoursSurcharge || '—')})`);
+  if (e.internalExternal) bits.push(e.internalExternal);
+  if (e.bobWeight) bits.push(`Bob weight ${escapeHtml(e.bobWeight)}g`);
+  if (e.balanceFactor) bits.push(`Balance factor ${escapeHtml(e.balanceFactor)}%`);
+  if (e.heavyMetal) bits.push(`Heavy metal (${escapeHtml(e.numberOfPlugsUsed || '—')} plugs)`);
   if (e.clutch) bits.push('Clutch');
+  if (e.mirrorNeutralBalance) bits.push(e.mirrorNeutralBalance);
+  if (e.extraTimeSurcharge) bits.push(`Extra time surcharge: ${escapeHtml(e.extraTimeSurcharge)}`);
+  const summaryBits = bits.slice(0, 3).join(', ');
   return `
   <div class="job-card" data-entry-id="${e.id}">
-    <div class="job-card-row" style="cursor:default;">
+    <div class="job-card-row">
       <div class="job-card-main">
         <div class="job-card-title"><strong>${escapeHtml(e.jobNumber || '—')}</strong> ${escapeHtml(e.customer || '')}</div>
-        <div class="job-card-sub">${escapeHtml(e.engine || '')} · ${escapeHtml(e.balanceType || '')}${bits.length ? ' · ' + bits.join(', ') : ''}</div>
+        <div class="job-card-sub">${escapeHtml(e.engine || '')} · ${escapeHtml(e.balanceType || '')}${summaryBits ? ' · ' + summaryBits : ''}${bits.length > 3 ? '…' : ''}</div>
       </div>
       <div class="job-card-meta">
         <span class="muted-sm">${formatDate(e.dateAdded)}</span>
@@ -271,8 +278,33 @@ function balancingRowHTML(e) {
         ` : ''}
       </div>
     </div>
-    ${e.notes ? `<div class="job-card-detail"><p class="muted-sm">${escapeHtml(e.notes)}</p></div>` : ''}
+    <div class="job-card-detail" hidden>
+      <div class="detail-grid">
+        <div><span class="muted-sm">Job #</span><br>${escapeHtml(e.jobNumber || '—')}</div>
+        <div><span class="muted-sm">Customer</span><br>${escapeHtml(e.customer || '—')}</div>
+        <div><span class="muted-sm">Engine</span><br>${escapeHtml(e.engine || '—')}</div>
+        <div><span class="muted-sm">Balance Type</span><br>${escapeHtml(e.balanceType || '—')}</div>
+      </div>
+      <h4 style="margin-top:12px;">Details</h4>
+      ${bits.length ? `<p class="muted-sm">${bits.map(escapeHtml).join(' · ')}</p>` : '<p class="muted-sm">No balance details recorded.</p>'}
+      <div class="detail-grid" style="margin-top:8px;">
+        <div><span class="muted-sm">Entered By</span><br>${escapeHtml(e.enteredBy || '—')}</div>
+        <div><span class="muted-sm">Date</span><br>${formatDate(e.dateAdded)}</div>
+      </div>
+      ${e.notes ? `<h4 style="margin-top:12px;">Notes</h4><p class="muted-sm">${escapeHtml(e.notes)}</p>` : ''}
+    </div>
   </div>`;
+}
+
+function wireBalancingListInteractions() {
+  document.querySelectorAll('#balancing-list .job-card').forEach((card) => {
+    const row = card.querySelector('.job-card-row');
+    const detail = card.querySelector('.job-card-detail');
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      detail.hidden = !detail.hidden;
+    });
+  });
 }
 
 function wireBalancingRowButtons() {

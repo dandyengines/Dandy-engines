@@ -1,7 +1,7 @@
 const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 const { recordHistory, clone } = require('./_history');
-const { notifyUser } = require('./_push');
+const { notifyUser, notifyUserOnStageMatch } = require('./_push');
 const { USERS } = require('./roles');
 const { loadMatrix, getPerm } = require('./_permissions');
 
@@ -144,6 +144,14 @@ exports.handler = async (event) => {
       data.order.push(job.id);
       await recordHistory(store, { key: `sheet:${sheet}`, before, description: `${user.name} created job ${job.jobNumber || '(no #)'} on ${sheet}'s sheet`, userName: user.name, area: 'myjobs' });
       await saveSheet(store, sheet, data);
+
+      const pushStore = getBlobStore('jobs');
+      for (const uid of await usersOnSheet(pushStore, sheet, session.userId)) {
+        notifyUser(pushStore, uid, 'newJobOnMySheet', {
+          title: 'Dandy Engines', body: `${user.name} added a new job (${job.jobNumber || '(no #)'}) to your sheet.`,
+        });
+      }
+
       return json(200, { job });
     }
 
@@ -157,6 +165,7 @@ exports.handler = async (event) => {
       // allowed fields to patch directly — core fields (job#/customer/engine)
       // are now editable post-creation, alongside stage/urgent/finish/etc.
       const patchable = ['jobNumber', 'customer', 'customerPhone', 'engine', 'stage', 'urgent', 'expectedFinish', 'invoiceNumber'];
+      const previousStage = job.stage;
       for (const key of patchable) {
         if (key in (body.patch || {})) job[key] = body.patch[key];
       }
@@ -164,7 +173,9 @@ exports.handler = async (event) => {
       await saveSheet(store, sheet, data);
 
       // Notifications: own-sheet change (other people editing "your" sheet),
-      // and urgent-flag (opt-in, everyone with view access).
+      // urgent-flag (opt-in, everyone with view access), a job reaching
+      // Awaiting Payment (opt-in, the sheet's own editors), and the
+      // general "job on my sheet moves to a status I picked" alert.
       const pushStore = getBlobStore('jobs');
       for (const uid of await usersOnSheet(pushStore, sheet, session.userId)) {
         notifyUser(pushStore, uid, 'ownSheetChange', {
@@ -175,6 +186,19 @@ exports.handler = async (event) => {
         for (const uid of await usersViewingSheet(pushStore, sheet, session.userId)) {
           notifyUser(pushStore, uid, 'urgentFlag', {
             title: '⚠ Urgent job', body: `Job ${job.jobNumber || '(no #)'} (${sheet}'s sheet) was flagged urgent.`,
+          });
+        }
+      }
+      if (body.patch && body.patch.stage && body.patch.stage !== previousStage) {
+        const newStage = body.patch.stage;
+        for (const uid of await usersOnSheet(pushStore, sheet, session.userId)) {
+          if (newStage === 'awaitingpayment') {
+            notifyUser(pushStore, uid, 'jobAwaitingPayment', {
+              title: 'Dandy Engines', body: `Job ${job.jobNumber || '(no #)'} on your sheet is now Awaiting Payment.`,
+            });
+          }
+          notifyUserOnStageMatch(pushStore, uid, newStage, {
+            title: 'Dandy Engines', body: `Job ${job.jobNumber || '(no #)'} on your sheet moved to a status you're watching.`,
           });
         }
       }
@@ -220,6 +244,14 @@ exports.handler = async (event) => {
       job.notes.push({ text: body.text, timestamp: nowISO(), author: user.name });
       await recordHistory(store, { key: `sheet:${sheet}`, before, description: `${user.name} added a note to job ${job.jobNumber || '(no #)'} on ${sheet}'s sheet`, userName: user.name, area: 'myjobs' });
       await saveSheet(store, sheet, data);
+
+      const pushStore = getBlobStore('jobs');
+      for (const uid of await usersOnSheet(pushStore, sheet, session.userId)) {
+        notifyUser(pushStore, uid, 'noteAddedToMySheet', {
+          title: 'Dandy Engines', body: `${user.name} added a note to job ${job.jobNumber || '(no #)'} on your sheet.`,
+        });
+      }
+
       return json(200, { job });
     }
 

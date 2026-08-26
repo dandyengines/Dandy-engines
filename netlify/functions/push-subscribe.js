@@ -1,6 +1,7 @@
 const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 const { CATEGORIES, VAPID_PUBLIC } = require('./_push');
+const { STAGE_IDS } = require('./_stages');
 
 async function loadSubs(store) {
   const data = await store.get('push-subs', { type: 'json' });
@@ -21,7 +22,13 @@ exports.handler = async (event) => {
     // the toggle states correctly.
     const subs = await loadSubs(store);
     const record = subs[session.userId] || { alertsEnabled: false, prefs: {} };
-    return json(200, { vapidPublicKey: VAPID_PUBLIC, alertsEnabled: record.alertsEnabled, prefs: record.prefs, subscribed: !!record.subscription });
+    return json(200, {
+      vapidPublicKey: VAPID_PUBLIC,
+      alertsEnabled: record.alertsEnabled,
+      prefs: record.prefs,
+      statusAlertStages: record.statusAlertStages || [],
+      subscribed: !!record.subscription,
+    });
   }
 
   if (event.httpMethod === 'POST') {
@@ -54,10 +61,14 @@ exports.handler = async (event) => {
       for (const cat of CATEGORIES) {
         if (cat in (body.prefs || {})) prefs[cat] = !!body.prefs[cat];
       }
+      const statusAlertStages = Array.isArray(body.statusAlertStages)
+        ? body.statusAlertStages.filter((s) => STAGE_IDS.includes(s))
+        : existing.statusAlertStages || [];
       subs[session.userId] = {
         ...existing,
         alertsEnabled: 'alertsEnabled' in body ? !!body.alertsEnabled : existing.alertsEnabled,
         prefs: { ...existing.prefs, ...prefs },
+        statusAlertStages,
       };
       await saveSubs(store, subs);
       return json(200, { ok: true });

@@ -4,7 +4,11 @@ const ALERT_CATEGORY_LABELS = {
   ownSheetChange: 'Someone edits a job on your sheet',
   urgentFlag: 'A job is flagged Urgent',
   newJobFromPayments: 'A new job is added via Part Payments',
-  rottlerEntries: 'A Rottler entry is added (Jake/Mike)',
+  newJobOnMySheet: 'A new job is added to your Builds/Machining sheet',
+  noteAddedToMySheet: 'A note is added to a job on your sheet',
+  jobAwaitingPayment: "A job you're responsible for reaches Awaiting Payment",
+  rottlerEntries: 'A Rottler entry is added',
+  balancingEntries: 'A Balancing entry is added',
   partPaymentsEntries: 'A Part Payments entry is logged (Jake)',
 };
 
@@ -30,6 +34,12 @@ async function alertsSettingsHTML() {
       </label>`)
     .join('');
 
+  const selectedStages = new Set(status.statusAlertStages || []);
+  const stageCheckboxes = STAGES.map((s) => `
+    <label class="chip-toggle" style="width:100%;justify-content:flex-start;margin-bottom:4px;font-size:12px;">
+      <input type="checkbox" class="alert-stage" value="${s.id}" ${selectedStages.has(s.id) ? 'checked' : ''}> ${s.label}
+    </label>`).join('');
+
   return `
     <div class="stub-card" style="margin-top:14px;">
       <h2>Alerts</h2>
@@ -39,6 +49,13 @@ async function alertsSettingsHTML() {
            <p class="muted-sm" style="margin-bottom:12px;">On iPhone, this only works once the app is added to your Home Screen (Share → Add to Home Screen).</p>`
       }
       <div id="alert-categories">${rows}</div>
+      <div class="stub-card" style="margin-top:10px;background:var(--bg);">
+        <h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">A job on your sheet moves to a status you choose:</h3>
+        <label class="chip-toggle" style="width:100%;justify-content:flex-start;margin-bottom:8px;">
+          <input type="checkbox" id="alert-statuschange" ${status.prefs?.statusChangeAlert !== false ? 'checked' : ''}> Enable status-change alerts (only for statuses ticked below)
+        </label>
+        <div id="alert-stage-list">${stageCheckboxes}</div>
+      </div>
     </div>
   `;
 }
@@ -58,6 +75,21 @@ function wireAlertsSettings() {
       document.querySelectorAll('.alert-cat').forEach((c) => { prefs[c.dataset.cat] = c.checked; });
       try {
         await api('/.netlify/functions/push-subscribe', { method: 'POST', body: JSON.stringify({ action: 'setPrefs', prefs }) });
+      } catch (e) { alert("Couldn't save: " + e.message); }
+    });
+  });
+  document.getElementById('alert-statuschange')?.addEventListener('change', async (e) => {
+    try {
+      await api('/.netlify/functions/push-subscribe', {
+        method: 'POST', body: JSON.stringify({ action: 'setPrefs', prefs: { statusChangeAlert: e.target.checked } }),
+      });
+    } catch (err) { alert("Couldn't save: " + err.message); }
+  });
+  document.querySelectorAll('.alert-stage').forEach((cb) => {
+    cb.addEventListener('change', async () => {
+      const statusAlertStages = Array.from(document.querySelectorAll('.alert-stage:checked')).map((c) => c.value);
+      try {
+        await api('/.netlify/functions/push-subscribe', { method: 'POST', body: JSON.stringify({ action: 'setPrefs', statusAlertStages }) });
       } catch (e) { alert("Couldn't save: " + e.message); }
     });
   });

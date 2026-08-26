@@ -6,7 +6,7 @@
 
 const PERSON_LABELS = { jake: 'Jake', mike: 'Mike', frank: 'Frank', sab: 'Sab', lou: 'Lou' };
 
-let allJobsState = { data: null, sortMode: 'person' };
+let allJobsState = { data: null, sortMode: 'person', statusFilter: '' };
 
 async function renderAllJobsTab() {
   const content = document.getElementById('content');
@@ -44,22 +44,28 @@ function paintAllJobs() {
   } else if (sortMode === 'status') {
     // Grouped by pipeline stage instead of by person, in pipeline order —
     // this is what lets someone like Ulrich see "everyone's jobs that are
-    // Awaiting Dummy Assembly" in one place.
+    // Awaiting Dummy Assembly" in one place. The status picker narrows it
+    // down to just one stage, as a flat list, when one is chosen.
     const flat = [];
     for (const sheet of Object.keys(data)) {
       for (const j of data[sheet]) if (j.stage !== 'complete') flat.push({ ...j, sheet });
     }
-    sectionsHTML = STAGES.filter((s) => s.id !== 'complete').map((stage) => {
-      const jobs = flat.filter((j) => j.stage === stage.id);
-      if (!jobs.length) return '';
-      return `
-        <div class="person-section">
-          <h3 class="person-heading">${stage.label}</h3>
-          <div class="job-list">
-            ${jobs.map((j) => ownerTaggedCardHTML(j, j.sheet)).join('')}
-          </div>
-        </div>`;
-    }).join('') || '<p class="muted-sm">No active jobs.</p>';
+    if (allJobsState.statusFilter) {
+      const jobs = flat.filter((j) => j.stage === allJobsState.statusFilter);
+      sectionsHTML = `<div class="job-list">${jobs.map((j) => ownerTaggedCardHTML(j, j.sheet)).join('') || '<p class="muted-sm">No active jobs at this status.</p>'}</div>`;
+    } else {
+      sectionsHTML = STAGES.filter((s) => s.id !== 'complete').map((stage) => {
+        const jobs = flat.filter((j) => j.stage === stage.id);
+        if (!jobs.length) return '';
+        return `
+          <div class="person-section">
+            <h3 class="person-heading">${stage.label}</h3>
+            <div class="job-list">
+              ${jobs.map((j) => ownerTaggedCardHTML(j, j.sheet)).join('')}
+            </div>
+          </div>`;
+      }).join('') || '<p class="muted-sm">No active jobs.</p>';
+    }
   } else {
     // Flat list sorted by job #, date, or customer name.
     const flat = [];
@@ -81,12 +87,20 @@ function paintAllJobs() {
         <button class="chip ${sortMode === 'date' ? 'chip-active' : ''}" data-ajsort="date">Date</button>
         <button class="chip ${sortMode === 'name' ? 'chip-active' : ''}" data-ajsort="name">Name</button>
       </div>
+      ${sortMode === 'status' ? `
+      <div class="toolbar-group">
+        <select id="alljobs-status-filter">
+          <option value="">All Statuses (grouped)</option>
+          ${STAGES.filter((s) => s.id !== 'complete').map((s) => `<option value="${s.id}" ${allJobsState.statusFilter === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}
+        </select>
+      </div>` : ''}
     </div>
     <input type="text" id="alljobs-search" placeholder="Search all jobs…" class="search-input">
     <div id="alljobs-sections">${sectionsHTML}</div>
   `;
 
   document.querySelectorAll('[data-ajsort]').forEach((btn) => btn.addEventListener('click', () => { allJobsState.sortMode = btn.dataset.ajsort; paintAllJobs(); }));
+  document.getElementById('alljobs-status-filter')?.addEventListener('change', (e) => { allJobsState.statusFilter = e.target.value; paintAllJobs(); });
 
   document.querySelectorAll('#alljobs-sections .job-card-row').forEach((row) => {
     row.addEventListener('click', () => {

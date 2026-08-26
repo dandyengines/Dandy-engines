@@ -6,7 +6,11 @@ const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'svQS3eDCJobCpcX69sGgEFT2
 webpush.setVapidDetails('mailto:admin@dandyengines.com', VAPID_PUBLIC, VAPID_PRIVATE);
 
 // Categories match the simple on/off toggles in Settings.
-const CATEGORIES = ['ownSheetChange', 'urgentFlag', 'newJobFromPayments', 'rottlerEntries', 'partPaymentsEntries'];
+const CATEGORIES = [
+  'ownSheetChange', 'urgentFlag', 'newJobFromPayments', 'rottlerEntries',
+  'partPaymentsEntries', 'newJobOnMySheet', 'noteAddedToMySheet',
+  'balancingEntries', 'jobAwaitingPayment', 'statusChangeAlert',
+];
 
 async function loadSubs(store) {
   const data = await store.get('push-subs', { type: 'json' });
@@ -33,4 +37,25 @@ async function notifyUser(store, userId, category, { title, body }) {
   }
 }
 
-module.exports = { notifyUser, CATEGORIES, VAPID_PUBLIC };
+// Like notifyUser, but for the "alert me when a job on my sheet moves to a
+// status I've picked" preference — gated by both the statusChangeAlert
+// on/off toggle AND whether the new stage is in that user's chosen list,
+// rather than a plain boolean category.
+async function notifyUserOnStageMatch(store, userId, stageId, { title, body }) {
+  try {
+    const subs = await loadSubs(store);
+    const record = subs[userId];
+    if (!record || !record.subscription || record.alertsEnabled === false) return;
+    if (record.prefs && record.prefs.statusChangeAlert === false) return;
+    if (!(record.statusAlertStages || []).includes(stageId)) return;
+
+    await webpush.sendNotification(
+      record.subscription,
+      JSON.stringify({ title, body })
+    );
+  } catch {
+    // Expired/invalid subscriptions, network hiccups, etc. — non-fatal.
+  }
+}
+
+module.exports = { notifyUser, notifyUserOnStageMatch, CATEGORIES, VAPID_PUBLIC };

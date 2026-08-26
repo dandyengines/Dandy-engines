@@ -1,6 +1,9 @@
 const { getBlobStore } = require('./_store');
 const { getSession, json } = require('./_shared');
 const { recordHistory, clone } = require('./_history');
+const { notifyUser } = require('./_push');
+const { USERS } = require('./roles');
+const { loadMatrix, getPerm } = require('./_permissions');
 
 const BUILD_SHEET_IDS = ['jake', 'mike', 'frank', 'sab', 'lou'];
 const MACHINING_SHEET_IDS = ['machining', 'machining_lou', 'machining_sab', 'machining_mike'];
@@ -8,6 +11,23 @@ const ALL_LINKABLE_SHEET_IDS = [...BUILD_SHEET_IDS, ...MACHINING_SHEET_IDS];
 
 function canView(user) { return user.perms.balancing !== 'unseen'; }
 function canInput(user) { return user.perms.balancing === 'edit'; }
+
+async function usersWithBalancingAccess(store, exceptUserId) {
+  const matrix = await loadMatrix(store);
+  return Object.entries(USERS)
+    .filter(([id, u]) => id !== exceptUserId && getPerm(matrix, id, 'balancing', u.role === 'admin') !== 'unseen')
+    .map(([id]) => id);
+}
+
+const MACHINING_OWNERS = { machining: 'jake', machining_lou: 'lou', machining_sab: 'sab', machining_mike: 'mike' };
+function tabIdForSheet(sheet) { return sheet in MACHINING_OWNERS ? sheet : `builds_${sheet}`; }
+async function usersOnSheet(store, sheet, exceptUserId) {
+  const matrix = await loadMatrix(store);
+  const tabId = tabIdForSheet(sheet);
+  return Object.entries(USERS)
+    .filter(([id, u]) => id !== exceptUserId && getPerm(matrix, id, tabId, u.role === 'admin') === 'edit')
+    .map(([id]) => id);
+}
 
 function nowISO() { return new Date().toISOString(); }
 
@@ -110,9 +130,16 @@ exports.handler = async (event) => {
       await recordHistory(store, { key: 'balancing', before, description: `${user.name} added a Balancing entry for job ${entry.jobNumber || '(no #)'}`, userName: user.name, area: 'balancing' });
       await saveBalancing(store, data);
 
+      for (const uid of await usersWithBalancingAccess(store, session.userId)) {
+        notifyUser(store, uid, 'balancingEntries', {
+          title: 'Dandy Engines — Balancing', body: `${user.name} added a Balancing entry for job ${entry.jobNumber || '(no #)'}.`,
+        });
+      }
+
       // Same auto-note-linking behavior as Rottler: if this job number
       // matches an existing Build or Machining job, add a timestamped note
-      // there with the balance job's details.
+      // there with the balance job's details, and let that sheet's
+      // owner(s) know, if they've opted in.
       if (body.linkedSheet && body.linkedJobId) {
         const sheetData = await loadSheet(store, body.linkedSheet);
         const job = sheetData.jobs.find((j) => j.id === body.linkedJobId);
@@ -124,6 +151,11 @@ exports.handler = async (event) => {
             auto: true,
           });
           await saveSheet(store, body.linkedSheet, sheetData);
+          for (const uid of await usersOnSheet(store, body.linkedSheet, session.userId)) {
+            notifyUser(store, uid, 'noteAddedToMySheet', {
+              title: 'Dandy Engines', body: `A Balancing note was added to job ${job.jobNumber || '(no #)'} on your sheet.`,
+            });
+          }
         }
       }
 

@@ -216,16 +216,17 @@ function paintRottlerList() {
   }
 
   list.innerHTML = filtered.map(rottlerRowHTML).join('') || '<p class="muted-sm">No entries found.</p>';
+  wireRottlerListInteractions();
   wireRottlerRedoButtons();
 }
 
 function rottlerRowHTML(e) {
   return `
   <div class="job-card" data-entry-id="${e.id}">
-    <div class="job-card-row" style="cursor:default;">
+    <div class="job-card-row">
       <div class="job-card-main">
         <div class="job-card-title"><strong>${escapeHtml(e.jobNumber || '—')}</strong> ${escapeHtml(e.customer || '')} ${e.redoOf ? '<span class="muted-sm">(redo)</span>' : ''}</div>
-        <div class="job-card-sub">${escapeHtml(e.engine || '')} · Piston OD ${e.pistonOD ?? '—'} · Bore ${e.boreSize ?? '—'} · Clearance ${e.clearance ?? '—'}${e.raceHone?.on ? ' · Race Hone' : ''}</div>
+        <div class="job-card-sub">${escapeHtml(e.engine || '')} · Piston OD ${e.pistonOD ?? '—'} · Bore ${e.boreSize ?? '—'} · Clearance ${e.clearance ?? '—'}${e.raceHone?.on ? ' · Race Hone' : ''}${e.torquePlate?.on ? ' · Torque Plate' : ''}</div>
       </div>
       <div class="job-card-meta">
         <span class="muted-sm">${formatDate(e.dateAdded)}</span>
@@ -237,8 +238,35 @@ function rottlerRowHTML(e) {
         ` : ''}
       </div>
     </div>
-    ${e.notes ? `<div class="job-card-detail"><p class="muted-sm">${escapeHtml(e.notes)}</p></div>` : ''}
+    <div class="job-card-detail" hidden>
+      <div class="detail-grid">
+        <div><span class="muted-sm">Job #</span><br>${escapeHtml(e.jobNumber || '—')}</div>
+        <div><span class="muted-sm">Customer</span><br>${escapeHtml(e.customer || '—')}</div>
+        <div><span class="muted-sm">Engine</span><br>${escapeHtml(e.engine || '—')}</div>
+        <div><span class="muted-sm">Piston OD</span><br>${e.pistonOD ?? '—'}</div>
+        <div><span class="muted-sm">Bore Size</span><br>${e.boreSize ?? '—'}</div>
+        <div><span class="muted-sm">Clearance</span><br>${e.clearance ?? '—'}</div>
+        <div><span class="muted-sm">Torque Plate</span><br>${e.torquePlate?.on ? `Yes (${escapeHtml(e.torquePlate.value || '—')})` : 'No'}</div>
+        <div><span class="muted-sm">Race Hone</span><br>${e.raceHone?.on
+          ? `RPK ${escapeHtml(e.raceHone.rpk || '—')}, RK ${escapeHtml(e.raceHone.rk || '—')}, RVK ${escapeHtml(e.raceHone.rvk || '—')}, Angle ${escapeHtml(e.raceHone.angle || '—')}, Stones used ${escapeHtml(e.raceHone.stonesUsed || '—')}`
+          : 'No'}</div>
+        <div><span class="muted-sm">Entered By</span><br>${escapeHtml(e.enteredBy || '—')}</div>
+        <div><span class="muted-sm">Date</span><br>${formatDate(e.dateAdded)}</div>
+      </div>
+      ${e.notes ? `<h4 style="margin-top:12px;">Notes</h4><p class="muted-sm">${escapeHtml(e.notes)}</p>` : ''}
+    </div>
   </div>`;
+}
+
+function wireRottlerListInteractions() {
+  document.querySelectorAll('#rottler-list .job-card').forEach((card) => {
+    const row = card.querySelector('.job-card-row');
+    const detail = card.querySelector('.job-card-detail');
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return; // Edit/Delete/Redo handle their own clicks
+      detail.hidden = !detail.hidden;
+    });
+  });
 }
 
 function wireRottlerRedoButtons() {
