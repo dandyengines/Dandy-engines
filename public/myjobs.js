@@ -154,14 +154,19 @@ function wireJobCards(sheet, editable) {
   document.querySelectorAll('.job-card').forEach((card) => {
     const row = card.querySelector('.job-card-row');
     const detail = card.querySelector('.job-card-detail');
+    const jobId = card.dataset.jobId;
     row.addEventListener('click', (e) => {
       if (e.target.closest('.drag-handle')) return;
       detail.hidden = !detail.hidden;
       if (!detail.hidden) loadJobPhotos(detail, sheet);
     });
 
+    // Wired regardless of edit access — the person "waiting for" this job
+    // may not otherwise be able to edit it, but still needs to be able to
+    // mark their own task complete.
+    wireWaitingForBlock(detail, sheet, jobId, editable, () => renderMyJobsTab(sheet));
+
     if (!editable) return;
-    const jobId = card.dataset.jobId;
 
     card.querySelector('.f-photo-upload')?.addEventListener('change', async (e) => {
       const file = e.target.files[0];

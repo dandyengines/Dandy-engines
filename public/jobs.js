@@ -104,6 +104,87 @@ async function uploadJobPhoto(file, sheet, jobId) {
   return api('/.netlify/functions/photos', { method: 'POST', body: JSON.stringify({ sheet, jobId, dataUrl }) });
 }
 
+// Full user directory, for the "Waiting For: select any user" picker —
+// broader than PERSON_NAMES (which only covers the 5 Builds sheet owners).
+const ALL_USERS = {
+  jake: 'Jake', mike: 'Mike', frank: 'Frank', sab: 'Sab', lou: 'Lou',
+  dean: 'Dean', ulrich: 'Ulrich', gus: 'Gus', josh: 'Josh', mel: 'Mel', nathaniel: 'Nathaniel',
+};
+
+// Shown in both the editable and read-only job detail views — a job can be
+// "waiting on" someone regardless of whether the person looking at it can
+// edit the job itself, and the assigned person needs to be able to mark
+// their own task complete even from a read-only (e.g. All Builds) view.
+function waitingForBlockHTML(job, canAdd) {
+  const pending = (job.waitingFor || []).filter((w) => !w.completed);
+  const rows = pending.map((w) => `
+    <div class="note-line waiting-for-row">
+      <span>Waiting on <strong>${escapeHtml(ALL_USERS[w.userId] || w.userId)}</strong>: ${escapeHtml(w.note)} <span class="muted-sm">(added by ${escapeHtml(w.createdByName)})</span></span>
+      ${session?.userId === w.userId ? `<button class="btn-complete-waitingfor" data-wf-id="${w.id}">✓ Mark Complete</button>` : ''}
+    </div>
+  `).join('');
+  return `
+    <div class="notes-block">
+      <h4>Waiting For</h4>
+      <div class="notes-list waiting-for-list">${rows || '<p class="muted-sm">Nobody is being waited on for this job.</p>'}</div>
+      ${canAdd ? `
+        <select class="f-waitingfor-user" style="margin-top:8px;">
+          <option value="">+ Add "waiting for"…</option>
+          ${Object.entries(ALL_USERS).map(([id, name]) => `<option value="${id}">${name}</option>`).join('')}
+        </select>
+      ` : ''}
+    </div>
+  `;
+}
+
+// Wires the Mark Complete buttons (always) and, if canAdd, the "select a
+// person" dropdown that pops up a note modal. `onDone` is called after any
+// successful change so the caller can refresh its own view.
+function wireWaitingForBlock(container, sheet, jobId, canAdd, onDone) {
+  container.querySelectorAll('.btn-complete-waitingfor').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        await api('/.netlify/functions/jobs', {
+          method: 'POST', body: JSON.stringify({ action: 'completeWaitingFor', sheet, jobId, waitingForId: btn.dataset.wfId }),
+        });
+        onDone();
+      } catch (err) { alert("Couldn't mark complete: " + err.message); }
+    });
+  });
+
+  if (!canAdd) return;
+  const select = container.querySelector('.f-waitingfor-user');
+  select?.addEventListener('click', (e) => e.stopPropagation());
+  select?.addEventListener('change', (e) => {
+    e.stopPropagation();
+    const userId = select.value;
+    if (!userId) return;
+    const name = ALL_USERS[userId];
+    const form = openModal(`
+      <h2>Waiting on ${escapeHtml(name)}</h2>
+      <label style="display:block;margin-top:8px;">What are you waiting on them for?
+        <textarea class="wf-note" rows="3" style="width:100%;margin-top:6px;"></textarea>
+      </label>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button id="wf-save" class="btn-primary">Add</button>
+        <button id="wf-cancel">Cancel</button>
+      </div>
+    `);
+    document.getElementById('wf-cancel').addEventListener('click', () => { closeModal(); select.value = ''; });
+    document.getElementById('wf-save').addEventListener('click', async () => {
+      const note = form.querySelector('.wf-note').value.trim();
+      try {
+        await api('/.netlify/functions/jobs', {
+          method: 'POST', body: JSON.stringify({ action: 'addWaitingFor', sheet, jobId, waitingForUserId: userId, note }),
+        });
+        closeModal();
+        onDone();
+      } catch (err) { alert("Couldn't save: " + err.message); }
+    });
+  });
+}
+
 function jobEditFormHTML(job, sheet) {
   return `
     <div class="detail-grid">
@@ -141,6 +222,7 @@ function jobEditFormHTML(job, sheet) {
       ${photoGalleryHTML(job)}
       <input type="file" accept="image/*" class="f-photo-upload" style="margin-top:8px;">
     </div>
+    ${waitingForBlockHTML(job, true)}
     <div class="job-actions-row">
       <button class="btn-complete">✓ Complete</button>
       <button class="btn-delete">🗑 Delete</button>
@@ -159,6 +241,7 @@ function jobReadOnlyDetailHTML(job, sheet) {
       </div>
     </div>
     ${job.photos && job.photos.length ? `<div class="notes-block"><h4>Photos</h4>${photoGalleryHTML(job)}</div>` : ''}
+    ${waitingForBlockHTML(job, false)}
   `;
 }
 

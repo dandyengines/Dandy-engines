@@ -100,6 +100,9 @@ function paintAllMachining() {
       detail.hidden = !detail.hidden;
       if (!detail.hidden) loadJobPhotos(detail, card.dataset.sheet);
     });
+    const card = row.closest('.job-card');
+    const detail = card.querySelector('.job-card-detail');
+    wireWaitingForBlock(detail, card.dataset.sheet, card.dataset.jobId, false, () => renderAllMachiningTab());
   });
 
   document.getElementById('allmachining-search').addEventListener('input', (e) => {

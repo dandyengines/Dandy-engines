@@ -70,7 +70,7 @@ function paintMachining(sheet) {
   document.getElementById('m-toggle-onhold').addEventListener('change', (e) => { state.showOnHold = e.target.checked; paintMachining(sheet); });
   document.getElementById('m-toggle-complete').addEventListener('change', (e) => { state.showComplete = e.target.checked; paintMachining(sheet); });
   document.getElementById('m-add-btn')?.addEventListener('click', () => showMachiningNewForm(sheet));
-  wireMachiningCards(sheet);
+  wireMachiningCards(sheet, data.canEdit);
   if (sortMode === 'custom' && data.canEdit) enableMachiningDragReorder(sheet);
 }
 
@@ -116,7 +116,7 @@ function showMachiningNewForm(sheet) {
   });
 }
 
-function wireMachiningCards(sheet) {
+function wireMachiningCards(sheet, editable) {
   document.querySelectorAll('#m-list .job-card').forEach((card) => {
     const row = card.querySelector('.job-card-row');
     const detail = card.querySelector('.job-card-detail');
@@ -128,6 +128,8 @@ function wireMachiningCards(sheet) {
     });
 
     const jobId = card.dataset.jobId;
+    wireWaitingForBlock(detail, sheet, jobId, editable, () => renderMachiningTab(sheet));
+
     card.querySelector('.f-photo-upload')?.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;

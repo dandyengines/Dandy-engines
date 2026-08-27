@@ -15,6 +15,7 @@ const TAB_LABELS = {
   machining_mike: "🛠️ Mike's Machining",
   balancing: '⚖️ Balancing',
   invoicesawaiting: '💳 Invoices Awaiting Payment',
+  waitingforyou: '⏳ Waiting For You',
   partpayments: '💰 Part Payments',
   settings: '⚙️ Settings',
   history: '🕘 History',
@@ -231,6 +232,10 @@ function renderTab(tabId) {
   }
   if (tabId === 'invoicesawaiting') {
     renderInvoicesAwaitingTab();
+    return;
+  }
+  if (tabId === 'waitingforyou') {
+    renderWaitingForYouTab();
     return;
   }
   if (tabId === 'settings') {

@@ -76,9 +76,7 @@ async function renderHomeTab() {
     </div>
   ` : '';
 
-  const dummyAssemblyTile = (data.dummyAssemblyCount !== undefined)
-    ? tileHTML('Awaiting Dummy Assembly (shop-wide)', data.dummyAssemblyCount, navTabIds.includes('alljobs') ? 'alljobs' : null)
-    : '';
+  const waitingForTile = tileHTML('Waiting For You', data.waitingForCount, 'waitingforyou');
 
   content.innerHTML = `
     ${personalSection}
@@ -88,7 +86,7 @@ async function renderHomeTab() {
     <div class="dash-tiles">
       ${tileHTML('Total Active Builds', data.shopWideActiveBuilds, navTabIds.includes('alljobs') ? 'alljobs' : null)}
       ${data.shopWideMachiningTotal !== null ? tileHTML('Total Active Machining', data.shopWideMachiningTotal, navTabIds.includes('allmachining') ? 'allmachining' : null) : ''}
-      ${dummyAssemblyTile}
+      ${waitingForTile}
       ${invoiceTile}
     </div>
   `;
@@ -99,7 +97,59 @@ async function renderHomeTab() {
   });
 }
 
-// ===== Invoices Awaiting Payment — dedicated list, reached from the tile =====
+// ===== Waiting For You — dedicated list, reached from the tile =====
+// Shows every job (Builds or Machining, regardless of whether this person
+// otherwise has access to that sheet) with a pending "waiting for" entry
+// assigned to them, with a Mark Complete button per entry.
+async function renderWaitingForYouTab() {
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="stub-card">Loading…</div>`;
+  let data;
+  try {
+    data = await api('/.netlify/functions/dashboard?action=waitingfor');
+  } catch (e) {
+    content.innerHTML = `<div class="stub-card">Couldn't load: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  content.innerHTML = `
+    <h2 class="section-title">Waiting For You</h2>
+    <div class="job-list">
+      ${data.jobs.map((j) => `
+        <div class="job-card" data-job-id="${j.id}" data-sheet="${j.tabId}">
+          <div class="job-card-row" style="cursor:default;">
+            <div class="job-card-main">
+              <div class="job-card-title"><strong>${escapeHtml(j.jobNumber || '—')}</strong> ${escapeHtml(j.customer || '')}</div>
+              <div class="job-card-sub">${escapeHtml(j.engine || '')}</div>
+            </div>
+          </div>
+          <div class="notes-block">
+            ${j.myWaitingFor.map((w) => `
+              <div class="note-line waiting-for-row">
+                <span>${escapeHtml(w.note)} <span class="muted-sm">(added by ${escapeHtml(w.createdByName)})</span></span>
+                <button class="btn-complete-waitingfor" data-wf-id="${w.id}" data-tab="${j.tabId}" data-job-id="${j.id}">✓ Mark Complete</button>
+              </div>
+            `).join('')}
+          </div>
+          <button class="wfy-goto-job" data-tab="${j.tabId}" style="margin-top:8px;padding:6px 12px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Go to job →</button>
+        </div>
+      `).join('') || '<p class="muted-sm">Nothing waiting on you right now.</p>'}
+    </div>
+  `;
+  content.querySelectorAll('.btn-complete-waitingfor').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api('/.netlify/functions/jobs', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'completeWaitingFor', sheet: btn.dataset.tab, jobId: btn.dataset.jobId, waitingForId: btn.dataset.wfId }),
+        });
+        await renderWaitingForYouTab();
+      } catch (e) { alert("Couldn't mark complete: " + e.message); }
+    });
+  });
+  content.querySelectorAll('.wfy-goto-job').forEach((btn) => {
+    btn.addEventListener('click', () => setActiveTab(btn.dataset.tab));
+  });
+}
 async function renderInvoicesAwaitingTab() {
   const content = document.getElementById('content');
   content.innerHTML = `<div class="stub-card">Loading…</div>`;

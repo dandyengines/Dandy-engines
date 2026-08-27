@@ -371,6 +371,14 @@ button{cursor:pointer;}
 }
 .tab-sheet-btn.active{border-color:var(--de-red);color:var(--de-red);}
 
+.waiting-for-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+}
+.waiting-for-row .btn-complete-waitingfor{
+  font-size:11px;padding:5px 10px;border-radius:6px;border:1px solid var(--hairline);
+  background:var(--panel-raised);color:var(--text);cursor:pointer;flex-shrink:0;
+}
+
 /* --- Placeholder cards for stage-1 stub screens --- */
 .stub-card{
   background:var(--panel);

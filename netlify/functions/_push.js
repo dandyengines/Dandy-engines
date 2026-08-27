@@ -10,6 +10,7 @@ const CATEGORIES = [
   'ownSheetChange', 'urgentFlag', 'newJobFromPayments', 'rottlerEntries',
   'partPaymentsEntries', 'newJobOnMySheet', 'noteAddedToMySheet',
   'balancingEntries', 'jobAwaitingPayment', 'statusChangeAlert',
+  'waitingForAssigned', 'waitingForCompleted',
 ];
 
 async function loadSubs(store) {

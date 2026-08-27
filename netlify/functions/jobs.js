@@ -139,6 +139,7 @@ exports.handler = async (event) => {
         personResponsible: isMachiningSheet(sheet) ? MACHINING_OWNERS[sheet] : sheet,
         notes: body.notes ? [{ text: body.notes, timestamp: nowISO(), author: user.name }] : [],
         photos: [],
+        waitingFor: [],
       };
       data.jobs.push(job);
       data.order.push(job.id);
@@ -267,6 +268,68 @@ exports.handler = async (event) => {
       await recordHistory(store, { key: `sheet:${sheet}`, before, description: `${user.name} reordered ${sheet}'s sheet`, userName: user.name, area: 'myjobs' });
       await saveSheet(store, sheet, data);
       return json(200, { order: data.order });
+    }
+
+    if (action === 'addWaitingFor') {
+      // Flags this job as waiting on a specific person, with a note on
+      // what's being requested. Anyone who can edit the job can add one;
+      // the assigned person gets notified and later marks it done
+      // themselves (see completeWaitingFor).
+      if (!canEdit(user, sheet)) return json(403, { error: 'Forbidden' });
+      if (!USERS[body.waitingForUserId]) return json(400, { error: 'Unknown user' });
+      const data = await loadSheet(store, sheet);
+      const before = clone(data);
+      const job = data.jobs.find((j) => j.id === body.jobId);
+      if (!job) return json(404, { error: 'Job not found' });
+      if (!job.waitingFor) job.waitingFor = [];
+      const entry = {
+        id: 'wf_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        userId: body.waitingForUserId,
+        note: body.note || '',
+        createdBy: session.userId,
+        createdByName: user.name,
+        createdAt: nowISO(),
+        completed: false,
+        completedAt: null,
+      };
+      job.waitingFor.push(entry);
+      await recordHistory(store, { key: `sheet:${sheet}`, before, description: `${user.name} added a "waiting for ${USERS[body.waitingForUserId].name}" note on job ${job.jobNumber || '(no #)'}`, userName: user.name, area: 'myjobs' });
+      await saveSheet(store, sheet, data);
+
+      const pushStore = getBlobStore('jobs');
+      notifyUser(pushStore, body.waitingForUserId, 'waitingForAssigned', {
+        title: 'Dandy Engines', body: `${user.name} is waiting on you for job ${job.jobNumber || '(no #)'}: "${entry.note}"`,
+      });
+
+      return json(200, { job });
+    }
+
+    if (action === 'completeWaitingFor') {
+      // Only the person it's assigned to can tick it off — it's their
+      // personal to-do. Deliberately NOT gated by canView(sheet): someone
+      // can be asked to look at a job on a sheet they don't otherwise have
+      // access to, and still needs to be able to close out their own task.
+      const data = await loadSheet(store, sheet);
+      const before = clone(data);
+      const job = data.jobs.find((j) => j.id === body.jobId);
+      if (!job) return json(404, { error: 'Job not found' });
+      const entry = (job.waitingFor || []).find((w) => w.id === body.waitingForId);
+      if (!entry) return json(404, { error: 'Waiting-for entry not found' });
+      if (entry.userId !== session.userId) return json(403, { error: 'Only the person this is assigned to can mark it complete' });
+      entry.completed = true;
+      entry.completedAt = nowISO();
+      await recordHistory(store, { key: `sheet:${sheet}`, before, description: `${user.name} completed a "waiting for" task on job ${job.jobNumber || '(no #)'}`, userName: user.name, area: 'myjobs' });
+      await saveSheet(store, sheet, data);
+
+      const pushStore = getBlobStore('jobs');
+      const notifyTargets = new Set([job.personResponsible, entry.createdBy].filter((id) => id && id !== session.userId));
+      for (const uid of notifyTargets) {
+        notifyUser(pushStore, uid, 'waitingForCompleted', {
+          title: 'Dandy Engines', body: `${user.name} completed the "waiting for" task on job ${job.jobNumber || '(no #)'} ("${entry.note}").`,
+        });
+      }
+
+      return json(200, { job });
     }
 
     return json(400, { error: 'Unknown action' });

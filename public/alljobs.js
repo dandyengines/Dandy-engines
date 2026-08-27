@@ -109,6 +109,9 @@ function paintAllJobs() {
       detail.hidden = !detail.hidden;
       if (!detail.hidden) loadJobPhotos(detail, card.dataset.sheet);
     });
+    const card = row.closest('.job-card');
+    const detail = card.querySelector('.job-card-detail');
+    wireWaitingForBlock(detail, card.dataset.sheet, card.dataset.jobId, false, () => renderAllJobsTab());
   });
 
   document.getElementById('alljobs-search').addEventListener('input', (e) => {

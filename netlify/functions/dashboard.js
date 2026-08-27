@@ -67,6 +67,26 @@ exports.handler = async (event) => {
     return json(200, { jobs, scope: isShopWideViewer ? 'shopwide' : 'personal' });
   }
 
+  // ---------- "Waiting For You" — the actual job list ----------
+  if (params.action === 'waitingfor') {
+    const jobs = [];
+    for (const sheet of BUILD_SHEET_IDS) {
+      const sheetJobs = await taggedJobs(store, sheet, `builds_${sheet}`);
+      for (const j of sheetJobs) {
+        const mine = (j.waitingFor || []).filter((w) => w.userId === session.userId && !w.completed);
+        if (mine.length) jobs.push({ ...j, myWaitingFor: mine });
+      }
+    }
+    for (const machSheet of Object.keys(MACHINING_OWNERS)) {
+      const sheetJobs = await taggedJobs(store, machSheet, machSheet);
+      for (const j of sheetJobs) {
+        const mine = (j.waitingFor || []).filter((w) => w.userId === session.userId && !w.completed);
+        if (mine.length) jobs.push({ ...j, myWaitingFor: mine });
+      }
+    }
+    return json(200, { jobs });
+  }
+
   const result = {};
 
   // ---------- Personal: "what's on my plate" ----------
@@ -158,12 +178,19 @@ exports.handler = async (event) => {
     };
   }
 
-  // ---------- Custom section: Ulrich's dashboard gets an extra shop-wide tile ----------
-  if (session.userId === 'ulrich') {
-    let count = 0;
-    for (const sheet of BUILD_SHEET_IDS) count += (await loadSheet(store, sheet)).filter((j) => j.stage === 'dummyassembly').length;
-    result.dummyAssemblyCount = count;
+  // ---------- "Waiting For You" — every user, regardless of sheet access ----------
+  // Scans every Builds + Machining sheet for a pending waitingFor entry
+  // assigned to this person, no matter which sheet it's on or whether they
+  // can normally view it — this replaces the one-off Ulrich "Awaiting Dummy
+  // Assembly" tile with a general mechanism that works the same for everyone.
+  let waitingForCount = 0;
+  for (const sheet of [...BUILD_SHEET_IDS, ...Object.keys(MACHINING_OWNERS)]) {
+    const jobs = await loadSheet(store, sheet);
+    for (const j of jobs) {
+      waitingForCount += (j.waitingFor || []).filter((w) => w.userId === session.userId && !w.completed).length;
+    }
   }
+  result.waitingForCount = waitingForCount;
 
   return json(200, result);
 };

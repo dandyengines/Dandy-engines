@@ -10,6 +10,8 @@ const ALERT_CATEGORY_LABELS = {
   rottlerEntries: 'A Rottler entry is added',
   balancingEntries: 'A Balancing entry is added',
   partPaymentsEntries: 'A Part Payments entry is logged (Jake)',
+  waitingForAssigned: "A job is waiting on you",
+  waitingForCompleted: 'A "waiting for" task on your job is completed',
 };
 
 function urlBase64ToUint8Array(base64String) {
