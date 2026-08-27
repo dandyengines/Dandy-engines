@@ -77,6 +77,7 @@ async function renderHomeTab() {
   ` : '';
 
   const waitingForTile = tileHTML('Waiting For You', data.waitingForCount, 'waitingforyou');
+  const feedbackTile = (data.feedbackCount !== undefined) ? tileHTML('Feedback', data.feedbackCount, 'feedbacklist') : '';
 
   content.innerHTML = `
     ${personalSection}
@@ -88,6 +89,7 @@ async function renderHomeTab() {
       ${data.shopWideMachiningTotal !== null ? tileHTML('Total Active Machining', data.shopWideMachiningTotal, navTabIds.includes('allmachining') ? 'allmachining' : null) : ''}
       ${waitingForTile}
       ${invoiceTile}
+      ${feedbackTile}
     </div>
   `;
 
@@ -100,7 +102,9 @@ async function renderHomeTab() {
 // ===== Waiting For You — dedicated list, reached from the tile =====
 // Shows every job (Builds or Machining, regardless of whether this person
 // otherwise has access to that sheet) with a pending "waiting for" entry
-// assigned to them, with a Mark Complete button per entry.
+// assigned to them. Uses the same job-card component every other list
+// uses, so it collapses/expands the same way and shows full job details
+// (notes, the Waiting For block with Mark Complete, etc) when tapped.
 async function renderWaitingForYouTab() {
   const content = document.getElementById('content');
   content.innerHTML = `<div class="stub-card">Loading…</div>`;
@@ -115,41 +119,33 @@ async function renderWaitingForYouTab() {
     <h2 class="section-title">Waiting For You</h2>
     <div class="job-list">
       ${data.jobs.map((j) => `
-        <div class="job-card" data-job-id="${j.id}" data-sheet="${j.tabId}">
-          <div class="job-card-row" style="cursor:default;">
-            <div class="job-card-main">
-              <div class="job-card-title"><strong>${escapeHtml(j.jobNumber || '—')}</strong> ${escapeHtml(j.customer || '')}</div>
-              <div class="job-card-sub">${escapeHtml(j.engine || '')}</div>
-            </div>
-          </div>
-          <div class="notes-block">
-            ${j.myWaitingFor.map((w) => `
-              <div class="note-line waiting-for-row">
-                <span>${escapeHtml(w.note)} <span class="muted-sm">(added by ${escapeHtml(w.createdByName)})</span></span>
-                <button class="btn-complete-waitingfor" data-wf-id="${w.id}" data-tab="${j.tabId}" data-job-id="${j.id}">✓ Mark Complete</button>
-              </div>
-            `).join('')}
-          </div>
-          <button class="wfy-goto-job" data-tab="${j.tabId}" style="margin-top:8px;padding:6px 12px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Go to job →</button>
+        <div class="wfy-card">
+          <div class="wfy-summary">${escapeHtml(j.myWaitingFor.map((w) => w.note).join(' · '))}</div>
+          ${jobCardHTML(j, { editable: false, sheet: j.tabId })}
+          <button class="wfy-goto-job" data-tab="${j.tabId}">Go to job →</button>
         </div>
       `).join('') || '<p class="muted-sm">Nothing waiting on you right now.</p>'}
     </div>
   `;
-  content.querySelectorAll('.btn-complete-waitingfor').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      try {
-        await api('/.netlify/functions/jobs', {
-          method: 'POST',
-          body: JSON.stringify({ action: 'completeWaitingFor', sheet: btn.dataset.tab, jobId: btn.dataset.jobId, waitingForId: btn.dataset.wfId }),
-        });
-        await renderWaitingForYouTab();
-      } catch (e) { alert("Couldn't mark complete: " + e.message); }
+
+  // Standard collapse/expand behavior, same as every other job list.
+  content.querySelectorAll('.job-card-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const card = row.closest('.job-card');
+      const detail = card.querySelector('.job-card-detail');
+      detail.hidden = !detail.hidden;
+      if (!detail.hidden) loadJobPhotos(detail, card.dataset.sheet);
     });
+    const card = row.closest('.job-card');
+    const detail = card.querySelector('.job-card-detail');
+    wireWaitingForBlock(detail, card.dataset.sheet, card.dataset.jobId, false, () => renderWaitingForYouTab());
   });
+
   content.querySelectorAll('.wfy-goto-job').forEach((btn) => {
     btn.addEventListener('click', () => setActiveTab(btn.dataset.tab));
   });
 }
+
 async function renderInvoicesAwaitingTab() {
   const content = document.getElementById('content');
   content.innerHTML = `<div class="stub-card">Loading…</div>`;

@@ -2,6 +2,7 @@
 // ===== searches everything the logged-in user can access ===============
 
 let searchDebounceTimer = null;
+let searchRequestSeq = 0;
 
 function openSearchBubble() {
   const overlay = document.getElementById('search-overlay');
@@ -34,8 +35,10 @@ function wireSearchBubble() {
     if (q.length < 2) { resultsEl.innerHTML = ''; return; }
     resultsEl.innerHTML = '<p class="muted-sm">Searching…</p>';
     searchDebounceTimer = setTimeout(async () => {
+      const mySeq = ++searchRequestSeq;
       try {
         const { results } = await api(`/.netlify/functions/search?q=${encodeURIComponent(q)}`);
+        if (mySeq !== searchRequestSeq) return; // a newer search superseded this one — ignore
         resultsEl.innerHTML = results.length
           ? results.map((r) => `<button class="search-result-row" data-tab="${r.tabId}">${escapeHtml(r.label)}</button>`).join('')
           : '<p class="muted-sm">No matches.</p>';
@@ -46,6 +49,7 @@ function wireSearchBubble() {
           });
         });
       } catch (e) {
+        if (mySeq !== searchRequestSeq) return;
         resultsEl.innerHTML = `<p class="muted-sm">Couldn't search: ${escapeHtml(e.message)}</p>`;
       }
     }, 250);

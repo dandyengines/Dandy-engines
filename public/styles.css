@@ -379,6 +379,24 @@ button{cursor:pointer;}
   background:var(--panel-raised);color:var(--text);cursor:pointer;flex-shrink:0;
 }
 
+/* --- Waiting For You list (Home dashboard tile) --- */
+.wfy-card{
+  border:1px solid var(--hairline);border-radius:var(--radius);
+  background:var(--panel);overflow:hidden;margin-bottom:10px;
+}
+.wfy-summary{
+  padding:10px 14px;text-align:center;
+  font-size:13px;font-weight:600;color:var(--de-red);
+  background:var(--panel-raised);border-bottom:1px solid var(--hairline);
+}
+.wfy-card .job-card{border:none;border-radius:0;margin-bottom:0;}
+.wfy-goto-job{
+  display:block;width:100%;text-align:center;
+  padding:10px;border:none;border-top:1px solid var(--hairline);
+  background:var(--panel-raised);color:var(--text);cursor:pointer;
+  font-family:var(--heading-font);font-size:12px;letter-spacing:.02em;text-transform:uppercase;
+}
+
 /* --- Placeholder cards for stage-1 stub screens --- */
 .stub-card{
   background:var(--panel);

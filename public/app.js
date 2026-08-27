@@ -19,10 +19,12 @@ const TAB_LABELS = {
   partpayments: '💰 Part Payments',
   settings: '⚙️ Settings',
   history: '🕘 History',
+  feedbacklist: '💬 Feedback',
 };
 
 let session = null; // { token, userId, name, role, tabs, ... }
 let activeTab = 'home';
+let navHistory = []; // stack of previous tabIds/null (for sub-screens), for the back button
 let navLabelMap = {}; // tabId -> full label (including emoji), including expanded builds_/machining_ ids
 let navTabIds = []; // ordered list of actual tab ids currently in the nav
 
@@ -92,12 +94,15 @@ function showApp() {
   applyTheme();
   buildNav();
   wireHeader();
+  navHistory = [];
+  activeTab = null; // avoids the first tab landed on being spuriously pushed to history
   setActiveTab(navTabIds.includes('home') ? 'home' : navTabIds[0]);
 }
 
 function wireHeader() {
   document.getElementById('topbar-user').textContent = `${session.name} · ${session.role}`;
   document.getElementById('settings-shortcut').addEventListener('click', () => setActiveTab('settings'));
+  document.getElementById('back-btn').addEventListener('click', goBack);
   wireSearchBubble();
   refreshAlertsIndicator();
 }
@@ -213,13 +218,39 @@ function closeTabSheet() {
   setTimeout(() => { overlay.hidden = true; }, 200);
 }
 
-function setActiveTab(tabId) {
+function setActiveTab(tabId, skipHistory) {
+  if (!skipHistory && activeTab && activeTab !== tabId) navHistory.push(activeTab);
   activeTab = tabId;
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.tab === tabId);
   });
   document.getElementById('page-title').textContent = (navLabelMap[tabId] || TAB_LABELS[tabId] || tabId).replace(/^\S+\s/, '');
+  updateBackButton();
   renderTab(tabId);
+}
+
+// Sub-screens reached from inside Settings (History, Manage Permissions,
+// Reorder My Tabs, Feedback) don't correspond to a sidebar tab — this is
+// the equivalent entry point for those, so the back button still works
+// uniformly "on all pages" as requested, always returning to Settings.
+function openSubScreen(title, renderFn) {
+  navHistory.push(activeTab);
+  activeTab = null;
+  document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.remove('active'));
+  document.getElementById('page-title').textContent = title;
+  updateBackButton();
+  renderFn();
+}
+
+function updateBackButton() {
+  document.getElementById('back-btn').hidden = navHistory.length === 0;
+}
+
+function goBack() {
+  if (!navHistory.length) return;
+  const prev = navHistory.pop();
+  updateBackButton();
+  setActiveTab(prev, true);
 }
 
 // ---------- Tab content ----------
@@ -236,6 +267,10 @@ function renderTab(tabId) {
   }
   if (tabId === 'waitingforyou') {
     renderWaitingForYouTab();
+    return;
+  }
+  if (tabId === 'feedbacklist') {
+    renderFeedbackListTab();
     return;
   }
   if (tabId === 'settings') {
@@ -302,6 +337,9 @@ function renderSettings() {
       <h2>Account</h2>
       <p>Logged in as <strong>${session.name}</strong> (${session.role})</p>
       <button id="logout-btn" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Log out</button>
+      <div style="margin-top:10px;">
+        <button id="feedback-btn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">💬 Feedback</button>
+      </div>
     </div>
     <div class="stub-card">
       <h2>Theme</h2>
@@ -326,6 +364,11 @@ function renderSettings() {
       <button id="open-tab-order-btn" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Reorder Tabs</button>
     </div>
     ${(session.role === 'admin' || session.perms?.settings === 'edit') ? `
+    <div class="stub-card" style="margin-top:14px;">
+      <h2>Feedback</h2>
+      <p class="muted-sm">Review what the team has submitted, and clear out anything handled.</p>
+      <button id="open-feedback-btn" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--hairline);background:var(--panel-raised);color:var(--text);">Review Feedback</button>
+    </div>
     <div class="stub-card" style="margin-top:14px;">
       <h2>Manage Team Permissions</h2>
       <p class="muted-sm">Set exactly what every person can see and edit, tab by tab. Changes apply immediately, next time they load that tab.</p>
@@ -373,6 +416,7 @@ function wireSettings() {
     clearSession();
     location.reload();
   });
+  document.getElementById('feedback-btn')?.addEventListener('click', openFeedbackModal);
   document.querySelectorAll('input[name="theme"]').forEach((radio) => {
     radio.addEventListener('change', (e) => {
       localStorage.setItem('de_theme', e.target.value);
@@ -386,16 +430,16 @@ function wireSettings() {
     });
   });
   document.getElementById('open-history-btn')?.addEventListener('click', () => {
-    document.getElementById('page-title').textContent = 'History';
-    renderHistoryTab();
+    openSubScreen('History', renderHistoryTab);
   });
   document.getElementById('open-permissions-btn')?.addEventListener('click', () => {
-    document.getElementById('page-title').textContent = 'Manage Team Permissions';
-    renderPermissionsTab();
+    openSubScreen('Manage Team Permissions', renderPermissionsTab);
+  });
+  document.getElementById('open-feedback-btn')?.addEventListener('click', () => {
+    openSubScreen('Feedback', renderFeedbackListTab);
   });
   document.getElementById('open-tab-order-btn')?.addEventListener('click', () => {
-    document.getElementById('page-title').textContent = 'Reorder My Tabs';
-    renderTabOrderTab();
+    openSubScreen('Reorder My Tabs', renderTabOrderTab);
   });
   document.getElementById('import-legacy-btn')?.addEventListener('click', checkImportStatus);
   document.getElementById('cleanup-jobnums-btn')?.addEventListener('click', checkCleanupStatus);

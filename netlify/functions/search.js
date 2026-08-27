@@ -42,21 +42,23 @@ exports.handler = async (event) => {
     }
   }
 
-  // Machining — same "who can see it" rule as the All Machining rollup:
-  // anyone with allmachining sees results from every machining sheet, not
-  // just their own (individual Machining tabs stay separately gated).
-  if (user.tabs.includes('allmachining')) {
-    for (const machSheet of Object.keys(MACHINING_OWNERS)) {
-      const data = await loadSheet(store, machSheet);
-      for (const j of data.jobs || []) {
-        if (matches(q, j.jobNumber, j.customer, j.engine)) {
-          const owner = MACHINING_OWNERS[machSheet];
-          // Route to the individual tab only if this user can actually open
-          // it; everyone else with the broader rollup permission lands on
-          // All Machining instead, where they can actually see the result.
-          const tabId = canViewMachining(user, machSheet) ? machSheet : 'allmachining';
-          results.push({ type: 'machining', tabId, label: `${j.jobNumber || '—'} — ${j.customer || ''} (${owner}'s Machining)` });
-        }
+  // Machining — either individual access to that specific sheet, or the
+  // broader "All Machining" rollup permission (which sees everyone's).
+  // Previously this was gated ONLY on the rollup permission, so someone
+  // granted just their own Machining tab (without allmachining) got zero
+  // machining search results even for their own jobs — that was the bug.
+  const seesAllMachining = user.tabs.includes('allmachining');
+  for (const machSheet of Object.keys(MACHINING_OWNERS)) {
+    if (!seesAllMachining && !canViewMachining(user, machSheet)) continue;
+    const data = await loadSheet(store, machSheet);
+    for (const j of data.jobs || []) {
+      if (matches(q, j.jobNumber, j.customer, j.engine)) {
+        const owner = MACHINING_OWNERS[machSheet];
+        // Route to the individual tab only if this user can actually open
+        // it; everyone else with the broader rollup permission lands on
+        // All Machining instead, where they can actually see the result.
+        const tabId = canViewMachining(user, machSheet) ? machSheet : 'allmachining';
+        results.push({ type: 'machining', tabId, label: `${j.jobNumber || '—'} — ${j.customer || ''} (${owner}'s Machining)` });
       }
     }
   }
@@ -87,6 +89,16 @@ exports.handler = async (event) => {
     for (const j of (balancing?.entries || [])) {
       if (matches(q, j.jobNumber, j.customer, j.engine)) {
         results.push({ type: 'balancing', tabId: 'balancing', label: `${j.jobNumber || '—'} — ${j.customer || ''} (Balancing)` });
+      }
+    }
+  }
+
+  // Part Payments — previously missing from search entirely.
+  if (user.tabs.includes('partpayments')) {
+    const pp = await store.get('partpayments', { type: 'json' });
+    for (const j of (pp?.jobs || [])) {
+      if (matches(q, j.jobNumber, j.customer)) {
+        results.push({ type: 'partpayments', tabId: 'partpayments', label: `${j.jobNumber || '—'} — ${j.customer || ''} (Part Payments)` });
       }
     }
   }

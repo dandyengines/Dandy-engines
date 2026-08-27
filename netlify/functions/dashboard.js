@@ -192,5 +192,11 @@ exports.handler = async (event) => {
   }
   result.waitingForCount = waitingForCount;
 
+  // ---------- Feedback tile (admin / anyone granted settings-edit) ----------
+  if (user.isSuperAdmin || user.perms.settings === 'edit') {
+    const feedback = await store.get('feedback', { type: 'json' });
+    result.feedbackCount = (feedback?.entries || []).length;
+  }
+
   return json(200, result);
 };
